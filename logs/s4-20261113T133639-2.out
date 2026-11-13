@@ -1,25 +1,0 @@
-/home/ubuntu/sky_workdir/vendor/esm/esm/models/esmc/kernels.py:54: UserWarning: ESMC: flash-attn is not installed or failed to import; attention and RoPE fall back to pure PyTorch. PyPI cannot carry our wheel, so install it by hand:
-
-    pip install "flash_attn @ https://github.com/evolutionaryscale/wheels/releases/download/py312-pt211-cu13-sm80-90/flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl"
-
-It needs Linux x86-64, Python 3.12, torch 2.11, CUDA 13, compute capability 8.0-9.0 and libstdc++ from GCC 13+ (Ubuntu 24.04, or LD_PRELOAD a newer libstdc++ on 22.04).
-  warnings.warn(
-Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Fetching 11 files: 100%|██████████| 11/11 [00:00<00:00, 987.42it/s]
-Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 894.07it/s]
-Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "/home/ubuntu/sky_workdir/argus/s4.py", line 124, in <module>
-    main()
-  File "/home/ubuntu/sky_workdir/argus/s4.py", line 119, in main
-    collect(m, s, df[df.split == split], shard, f"{OUT}/{split}/shard{shard[0]}", log)
-  File "/home/ubuntu/sky_workdir/argus/s4.py", line 51, in collect
-    x = net.run(m, ids, x=x0, stop=L, tap=tap)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ubuntu/sky_workdir/argus/net.py", line 101, in run
-    x = _block(bl[l], l, x, mask, edits or {}, tap, pattern)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/ubuntu/sky_workdir/argus/net.py", line 80, in _block
-    a = F.silu(g) * u
-        ~~~~~~~~~~^~~
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 216.00 MiB. GPU 0 has a total capacity of 79.25 GiB of which 70.94 MiB is free. Including non-PyTorch memory, this process has 79.17 GiB memory in use. Of the allocated memory 77.64 GiB is allocated by PyTorch, and 1.05 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)

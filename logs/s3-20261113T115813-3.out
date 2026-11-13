@@ -1,10 +1,0 @@
-/home/ubuntu/sky_workdir/vendor/esm/esm/models/esmc/kernels.py:54: UserWarning: ESMC: flash-attn is not installed or failed to import; attention and RoPE fall back to pure PyTorch. PyPI cannot carry our wheel, so install it by hand:
-
-    pip install "flash_attn @ https://github.com/evolutionaryscale/wheels/releases/download/py312-pt211-cu13-sm80-90/flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl"
-
-It needs Linux x86-64, Python 3.12, torch 2.11, CUDA 13, compute capability 8.0-9.0 and libstdc++ from GCC 13+ (Ubuntu 24.04, or LD_PRELOAD a newer libstdc++ on 22.04).
-  warnings.warn(
-Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Fetching 11 files: 100%|██████████| 11/11 [00:00<00:00, 967.61it/s]
-Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 921.93it/s]
-/home/ubuntu/sky_workdir/argus/s3.py:74: UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /pytorch/aten/src/ATen/Context.cpp:760.)
-  fs = torch.sparse_coo_tensor(flat.nonzero().T.flip(0), torch.ones(int((flat > 0).sum()), device=dev), (F, T)).coalesce()
