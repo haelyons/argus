@@ -1,0 +1,39 @@
+{
+ "stage": "s4",
+ "shard": [
+  7,
+  8
+ ],
+ "argv": [
+  "/home/ubuntu/sky_workdir/argus/s4.py",
+  "--shard",
+  "7/8"
+ ],
+ "tok_s": 1337.778274133987,
+ "ops": {
+  "pass_to_60": {
+   "seconds": 1156.8467237949371,
+   "tokens": 2039574,
+   "fwd_equiv": 0.7587880673101088
+  },
+  "shares": {
+   "seconds": 762.7118446826935,
+   "tokens": 2039574,
+   "fwd_equiv": 0.500270809120514
+  }
+ },
+ "stages": {
+  "save": 92.84367322921753,
+  "train": 1772.7961151599884,
+  "holdout": 241.36601495742798
+ },
+ "cheaper": [],
+ "notes": {
+  "tokens": 205202
+ },
+ "gpu_type": "NVIDIA A100-SXM4-80GB",
+ "gpu_count": 8,
+ "seconds": 2074.6233553886414,
+ "peak_host_gb": 33.402099609375,
+ "peak_gpu_gb": 67.96744537353516
+}

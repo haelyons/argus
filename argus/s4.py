@@ -23,7 +23,7 @@ from argus import data, net, sae
 from argus.runlog import Log
 
 OUT = "out/s4"
-BUDGET = 8192
+BUDGET = 6144
 
 
 def collect(m, s, df, shard, out, log):
@@ -31,7 +31,7 @@ def collect(m, s, df, shard, out, log):
     L, U, H, F, dev = sae.LAYER, bl[0].ffn.ffn_hidden_size, bl[0].attn.n_heads, s.W_enc.shape[1], "cuda"
     W = sae.read_weight(s)
     unit = torch.zeros(L, F, U, device=dev)
-    head = torch.zeros(L, F, W.shape[0], dtype=torch.float64, device=dev)
+    head = torch.zeros(L, F, W.shape[0], device=dev)
     emb = torch.zeros(F, W.shape[0], dtype=torch.float64, device=dev)
     base = torch.zeros(L, U, dtype=torch.float64, device=dev)
     pre_sum, count, n = torch.zeros(F, dtype=torch.float64, device=dev), torch.zeros(F, dtype=torch.float64, device=dev), 0

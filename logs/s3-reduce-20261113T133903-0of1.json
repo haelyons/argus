@@ -1,0 +1,30 @@
+{
+ "stage": "s3-reduce",
+ "shard": [
+  0,
+  1
+ ],
+ "argv": [
+  "/home/ubuntu/sky_workdir/argus/s3.py",
+  "--reduce"
+ ],
+ "tok_s": null,
+ "ops": {},
+ "stages": {},
+ "cheaper": [],
+ "notes": {
+  "train": {
+   "shards": 8,
+   "tokens": 14711711
+  },
+  "holdout": {
+   "shards": 8,
+   "tokens": 1660543
+  }
+ },
+ "gpu_type": "NVIDIA A100-SXM4-80GB",
+ "gpu_count": 1,
+ "seconds": 542.9778316020966,
+ "peak_host_gb": 20.92578887939453,
+ "peak_gpu_gb": 0.0
+}

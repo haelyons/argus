@@ -1,0 +1,102 @@
+{
+ "stage": "s5-reduce",
+ "shard": [
+  0,
+  1
+ ],
+ "argv": [
+  "/home/ubuntu/sky_workdir/argus/s5.py",
+  "--reduce"
+ ],
+ "tok_s": null,
+ "ops": {},
+ "stages": {},
+ "cheaper": [],
+ "notes": {
+  "train": {
+   "proteins": 1024,
+   "masked": 50703,
+   "loss": {
+    "none": 0.9953,
+    "weakest_0.5": 0.9952,
+    "weakest_0.75": 0.996,
+    "weakest_0.9": 1.1717,
+    "weakest_0.95": 1.7874,
+    "weakest_0.98": 2.7794,
+    "weakest_0.99": 3.1926,
+    "weakest_0.995": 3.1957,
+    "weakest_0.998": 3.2533,
+    "weakest_0.999": 3.0838,
+    "g+v+": 2.3424,
+    "g+v-": 2.2992,
+    "g-v+": 1.0279,
+    "g-v-": 1.033,
+    "g-": 1.4889,
+    "v-": 2.5896
+   },
+   "removed": {
+    "none": 0.0,
+    "weakest_0.5": 0.501,
+    "weakest_0.75": 0.7527,
+    "weakest_0.9": 0.9055,
+    "weakest_0.95": 0.9603,
+    "weakest_0.98": 0.9871,
+    "weakest_0.99": 0.9938,
+    "weakest_0.995": 0.9968,
+    "weakest_0.998": 0.9986,
+    "weakest_0.999": 0.9992,
+    "g+v+": 0.06,
+    "g+v-": 0.0579,
+    "g-v+": 0.4466,
+    "g-v-": 0.4471,
+    "g-": 0.9007,
+    "v-": 0.5
+   }
+  },
+  "holdout": {
+   "proteins": 1024,
+   "masked": 49082,
+   "loss": {
+    "none": 0.9995,
+    "weakest_0.5": 0.9995,
+    "weakest_0.75": 1.0018,
+    "weakest_0.9": 1.2034,
+    "weakest_0.95": 1.8095,
+    "weakest_0.98": 2.7787,
+    "weakest_0.99": 3.1706,
+    "weakest_0.995": 3.1862,
+    "weakest_0.998": 3.237,
+    "weakest_0.999": 3.0753,
+    "g+v+": 2.3493,
+    "g+v-": 2.3173,
+    "g-v+": 1.0337,
+    "g-v-": 1.0401,
+    "g-": 1.5175,
+    "v-": 2.5885
+   },
+   "removed": {
+    "none": 0.0,
+    "weakest_0.5": 0.5007,
+    "weakest_0.75": 0.7522,
+    "weakest_0.9": 0.9056,
+    "weakest_0.95": 0.9606,
+    "weakest_0.98": 0.9872,
+    "weakest_0.99": 0.9938,
+    "weakest_0.995": 0.9968,
+    "weakest_0.998": 0.9986,
+    "weakest_0.999": 0.9992,
+    "g+v+": 0.0601,
+    "g+v-": 0.0581,
+    "g-v+": 0.4464,
+    "g-v-": 0.4469,
+    "g-": 0.9009,
+    "v-": 0.5
+   }
+  }
+ },
+ "gpu_type": "NVIDIA A100-SXM4-80GB",
+ "gpu_count": 1,
+ "seconds": 0.14759397506713867,
+ "peak_host_gb": 0.6756591796875,
+ "peak_gpu_gb": 0.0
+}

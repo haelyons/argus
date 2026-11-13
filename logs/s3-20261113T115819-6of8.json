@@ -12,38 +12,48 @@
  "tok_s": 1336.6986437510354,
  "ops": {
   "unit_stats": {
-   "seconds": 1.065727949142456,
-   "tokens": 644960,
-   "fwd_equiv": 0.002208752642375176
+   "seconds": 262.87558221817017,
+   "tokens": 163717200,
+   "fwd_equiv": 0.0021462951615730777
   },
   "unit_extremes": {
-   "seconds": 0.481717586517334,
-   "tokens": 644960,
-   "fwd_equiv": 0.0009983739217451352
+   "seconds": 128.65916776657104,
+   "tokens": 163717200,
+   "fwd_equiv": 0.001050461008737704
   },
   "features": {
-   "seconds": 0.07375359535217285,
-   "tokens": 8062,
-   "fwd_equiv": 0.012228520327339634
+   "seconds": 14.846913576126099,
+   "tokens": 2046465,
+   "fwd_equiv": 0.009697624558004457
   },
   "feature_by_unit_held": {
-   "seconds": 2.0809361934661865,
-   "tokens": 8062,
-   "fwd_equiv": 0.34502413638535023
+   "seconds": 526.3614294528961,
+   "tokens": 2046465,
+   "fwd_equiv": 0.34380583536612774
   },
   "feature_by_unit": {
-   "seconds": 0.6829373836517334,
-   "tokens": 161240,
-   "fwd_equiv": 0.005661631570913871
+   "seconds": 174.31387162208557,
+   "tokens": 40929300,
+   "fwd_equiv": 0.005692868331103486
   },
   "pass": {
-   "seconds": 10.604342937469482,
-   "tokens": 8062,
-   "fwd_equiv": 1.758225108209666
+   "seconds": 2642.222376346588,
+   "tokens": 2046465,
+   "fwd_equiv": 1.7258321383219954
   }
  },
- "stages": {},
- "cheaper": [],
+ "stages": {
+  "save": 120.47054362297058,
+  "train": 2572.8439915180206,
+  "holdout": 387.12061953544617
+ },
+ "cheaper": [
+  {
+   "what": "feature-by-unit table for blocks before the SAE",
+   "before": "separate pass to block 60 to get features first: 0.75 forward equivalents (s1 forward_to_60)",
+   "after": "hold blocks 0-59 activations as f16 on the GPU until features exist; see ops.feature_by_unit_held"
+  }
+ ],
  "notes": {
   "checks": {
    "write_rebuild_max_rel": 8.654981684230734e-06,
@@ -54,11 +64,11 @@
    "feature_max": 29.763099670410156,
    "sae_idf_max_are_ones": true
   },
-  "tokens": 8062
+  "tokens": 206855
  },
  "gpu_type": "NVIDIA A100-SXM4-80GB",
  "gpu_count": 8,
- "seconds": 111.20326972007751,
+ "seconds": 3060.435263633728,
  "peak_host_gb": 33.4002685546875,
- "peak_gpu_gb": 70.95942211151123
+ "peak_gpu_gb": 71.24215793609619
 }
