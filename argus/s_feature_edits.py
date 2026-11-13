@@ -1,15 +1,15 @@
-"""Stage 9: edit the feature itself and ask whether the same readers and predictions move as
+"""Edit the feature itself and ask whether the same readers and predictions move as
 when its unit group is removed.
 
 A feature edit changes state[60] by (f' - f) * decoder direction * sd at every position where
 the feature fires, which leaves the SAE's reconstruction error in place. The masked input gets
 the same state change (the SAE itself is never run on masked input).
 Edits compared, per example of each feature target:
-  feat_remove (f' = 0), feat_raise (f' = 2f), group_remove (stage 8's removal of 64 units)
+  feat_remove (f' = 0), feat_raise (f' = 2f), group_remove (the unit group s_readers removed)
 
-out/s9/<target>.pt, per example:
+out/feature_edits/<target>.pt, per example:
   per edit: units     top 256 units in blocks >= 60 by absolute change * write norm: ids, signed change
-            block_change (20,), heads (20, H) as in stage 8
+            block_change (20,), heads (20, H) as in s_readers
             kl, logp (intact input, on-position true residue), mloss, mlogp, dlogits (64,) at the on-position
   clean:    logp, mloss, mlogp
   agree:    feat_remove vs group_remove, and feat_remove vs feat_raise (expect about -1): cosines of the
@@ -23,11 +23,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from argus import data, net, pick, sae
+from argus import data, edit, net, pick, sae
 from argus.runlog import Log
-from argus.s8 import GROUP, capture, edits
 
-OUT, K, R = "out/s9", 256, 64
+OUT, K, R = "out/feature_edits", 256, 64
 
 
 def run_example(m, s, ids, e, j, removed, norm, log):
@@ -37,7 +36,7 @@ def run_example(m, s, ids, e, j, removed, norm, log):
     mids, labels = data.mask(ids.cpu(), [e["on"][0]])
     labels[0, pos], mids[0, pos] = int(true), net.MASK
     mids, labels = mids.cuda(), labels.cuda()
-    c, cm = capture(m, ids), capture(m, mids)
+    c, cm = edit.capture(m, ids), edit.capture(m, mids)
     x60 = c["x"][L60]
     _, val, ind, sd = sae.encode(s, x60)
     f = (val * (ind == j)).sum(-1, keepdim=True)
@@ -75,7 +74,7 @@ def run_example(m, s, ids, e, j, removed, norm, log):
     for nm, k in (("feat_remove", -1.0), ("feat_raise", 1.0)):
         out[nm], full[nm] = go(L60, lambda cc: {}, x60 + k * step, cm["x"][L60] + k * step)
     start = int(removed.min()) // U
-    out["group_remove"], full["group_remove"] = go(start, lambda cc: edits(removed, none, none, cc, U, H), c["x"][start], cm["x"][start])
+    out["group_remove"], full["group_remove"] = go(start, lambda cc: edit.remove_hold(removed, none, none, cc, U, H), c["x"][start], cm["x"][start])
     cos = lambda a, b: F.cosine_similarity(a.flatten(), b.flatten(), dim=0).item()
     agree = {}
     for a, b in (("feat_remove", "group_remove"), ("feat_remove", "feat_raise")):
@@ -90,15 +89,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shard", default="0/1")
     shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("s9", shard)
+    log = Log("feature_edits", shard)
     m, s = net.load(), sae.load()
     df = data.sample()
-    norm = torch.from_numpy(np.load("out/s2/norm.npy")).cuda()
+    norm = torch.from_numpy(np.load("out/weights/norm.npy")).cuda()
     os.makedirs(OUT, exist_ok=True)
     for name, kind, t, ex in pick.targets(shard):
         if kind != "features":
             continue
-        removed = torch.load(f"out/s7/{name}.pt")["rankings"]["grad"][:GROUP].cuda()
+        removed = torch.load(f"out/readers/{name}.pt")[0]["removed"].cuda()
         rec = []
         for split, pairs in ex.items():
             for e in pairs:

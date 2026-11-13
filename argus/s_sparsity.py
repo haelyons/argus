@@ -1,13 +1,13 @@
-"""Stage 5: how sparse can the network's own units be made, measured by masked-prediction loss.
+"""How sparse can the network's own units be made, measured by masked-prediction loss.
 
 An activation's size is |activation| * its write norm. Thresholds are global quantiles of that
-size over the stage 3 token sample; removal is applied inside the running network, every block.
+size over the s_collect token sample; removal is applied inside the running network, every block.
 Sign conditions remove every activation in one gate/value quadrant instead.
 
-out/s5/<split>.pt  conds, protein idx, loss (P, C) summed over masked positions, masked (P,),
+out/sparsity/<split>.pt  conds, protein idx, loss (P, C) summed over masked positions, masked (P,),
                    removed (C, N) fraction of activations removed per block,
                    mass (C, N) fraction of activation size removed per block, thr
-python -m argus.s5 --shard i/n | --reduce
+python -m argus.s_sparsity --shard i/n | --reduce
 """
 
 import argparse
@@ -20,7 +20,7 @@ import torch
 from argus import data, net
 from argus.runlog import Log
 
-OUT = "out/s5"
+OUT = "out/sparsity"
 FRACS = [0.5, 0.75, 0.9, 0.95, 0.98, 0.99, 0.995, 0.998, 0.999]
 SIGNS = {"g+v+": (1, 1), "g+v-": (1, 0), "g-v+": (0, 1), "g-v-": (0, 0), "g-": (0, None), "v-": (None, 0)}
 CONDS = ["none"] + [f"weakest_{f}" for f in FRACS] + list(SIGNS)
@@ -28,7 +28,7 @@ PROTEINS, SEED, BUDGET, THR_TOKENS = 1024, 0, 8192, 512
 
 
 def thresholds(norm):
-    acts = torch.load("out/s3/train/sample.pt")["acts"][:THR_TOKENS].cuda().float()
+    acts = torch.load("out/collect/train/sample.pt")["acts"][:THR_TOKENS].cuda().float()
     size = (acts.abs() * norm).flatten().sort().values
     return [size[int(f * len(size))].item() for f in FRACS]
 
@@ -61,10 +61,10 @@ def main():
     if a.reduce:
         return reduce()
     shard = tuple(map(int, a.shard.split("/")))
-    log = Log("s5", shard)
+    log = Log("sparsity", shard)
     m = net.load()
     N = len(net.blocks(m))
-    norm = torch.from_numpy(np.load("out/s2/norm.npy")).cuda()
+    norm = torch.from_numpy(np.load("out/weights/norm.npy")).cuda()
     thr = thresholds(norm)
     log.note(thr=thr)
     df = data.sample()
@@ -92,7 +92,7 @@ def main():
 
 
 def reduce():
-    log = Log("s5-reduce")
+    log = Log("sparsity-reduce")
     for split in ("train", "holdout"):
         ps = [torch.load(f) for f in sorted(glob.glob(f"{OUT}/{split}-shard*.pt"))]
         nb = sum(p["batches"] for p in ps)

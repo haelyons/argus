@@ -1,6 +1,6 @@
-"""Stage 3: one pass over the sample, per split, everything at once.
+"""One pass over the sample, per split, everything at once.
 
-out/s3/<split>/
+out/collect/<split>/
   units.pt     n tokens; stat (N, 14, U) sums over tokens, rows = STAT;
                hi, lo (N, K, U) strongest examples at each end as values and token ids
   features.pt  stat (4, F) rows = FSTAT; hi (K, F) values and token ids
@@ -8,8 +8,8 @@ out/s3/<split>/
                feature values and indices (S, 64), residue token (S,)
   cond_LL.npy  (F, U) f16: mean activation of each unit of block LL over tokens where the feature fires
 Token id = protein index * 1024 + position (position 0 is <cls>).
-python -m argus.s3 --shard i/n     collect one shard
-python -m argus.s3 --reduce        merge shards
+python -m argus.s_collect --shard i/n     collect one shard
+python -m argus.s_collect --reduce        merge shards
 """
 
 import argparse
@@ -20,11 +20,11 @@ import numpy as np
 import torch
 
 from argus import data, net, sae
+from argus.checks import checks
 from argus.collect import extremes
 from argus.runlog import Log
-from argus.s1 import checks
 
-OUT = "out/s3"
+OUT = "out/collect"
 K, S, BUDGET = 32, 8192, 8192
 STAT = ["a", "a2", "g", "g2", "v", "v2", "n_g+v+", "n_g+v-", "n_g-v+", "a_g+v+", "a_g+v-", "a_g-v+", "a_g-v-", "n_a>0"]
 FSTAT = ["tokens", "proteins", "f", "f2"]
@@ -51,12 +51,12 @@ def collect(m, s, df, shard, out, log):
         def tap(l, r):
             nonlocal fs, fhi
             g, v, a = (r[k][keep] for k in "gva")
-            with log.op("unit_stats", T):
+            with log.op("unit_stats", T * (l == 0)):
                 gp, vp = g > 0, v > 0
                 pp, pn, np_ = gp & vp, gp & ~vp, ~gp & vp
                 rows = [a, a * a, g, g * g, v, v * v, pp, pn, np_, a * pp, a * pn, a * np_, a * ~(gp | vp), a > 0]
                 stat[l] += torch.stack([x.sum(0, dtype=torch.float64) for x in rows])
-            with log.op("unit_extremes", T):
+            with log.op("unit_extremes", T * (l == 0)):
                 hi[l] = extremes(hi[l], a, tok, K)
                 lo[l] = extremes(lo[l], -a, tok, K)
             acts.append(a[pick].half().cpu())
@@ -77,7 +77,7 @@ def collect(m, s, df, shard, out, log):
                         tab[j] += torch.sparse.mm(fs, h.float())
                 held.clear()
             if l >= sae.LAYER:
-                with log.op("feature_by_unit", T):
+                with log.op("feature_by_unit", T * (l == sae.LAYER)):
                     tab[l] += torch.sparse.mm(fs, a)
 
         with log.op("pass", T), torch.no_grad():
@@ -111,7 +111,7 @@ def merge_ext_lo(parts, k):
 
 
 def reduce():
-    log = Log("s3-reduce")
+    log = Log("collect-reduce")
     for split in ("train", "holdout"):
         dirs = sorted(glob.glob(f"{OUT}/{split}/shard*"))
         out = f"{OUT}/{split}"
@@ -139,7 +139,7 @@ def main():
     if a.reduce:
         return reduce()
     shard = tuple(map(int, a.shard.split("/")))
-    log = Log("s3", shard)
+    log = Log("collect", shard)
     m, s = net.load(), sae.load()
     df = data.sample()
     ids = next(data.batches(df[df.split == "train"], BUDGET, shard))[1].cuda()
@@ -151,7 +151,7 @@ def main():
         with log.stage(split):
             collect(m, s, df[df.split == split], shard, f"{OUT}/{split}/shard{shard[0]}", log)
     log.cheaper("feature-by-unit table for blocks before the SAE",
-                before="separate pass to block 60 to get features first: 0.75 forward equivalents (s1 forward_to_60)",
+                before="separate pass to block 60 to get features first: 0.75 forward equivalents (s_checks forward_to_60)",
                 after="hold blocks 0-59 activations as f16 on the GPU until features exist; see ops.feature_by_unit_held")
     log.write()
 

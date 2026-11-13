@@ -1,11 +1,11 @@
-"""Targets for stages 6-9, and each target's on- and matched off-examples from stage 3.
+"""Targets for the per-target scripts, and each target's on- and matched off-examples from s_collect.
 
 targets.json   replace freely: {"features": [j, ...], "units": [[block, unit], ...]}
                default rule: 32 features evenly spaced in rank of firing frequency;
                one random unit in every third block.
 examples.json  per target and split: [{"on": [protein, pos], "off": [protein, pos]}, ...]
-               on  = strongest stage 3 examples, one per protein
-               off = a stage 3 sample token with the same residue where the target is off
+               on  = strongest s_collect examples, one per protein
+               off = an s_collect sample token with the same residue where the target is off
                      (feature not firing; unit at or below its sample median), nearest in position
 python -m argus.pick
 """
@@ -27,9 +27,9 @@ def name(kind, t):
 
 
 def write_targets():
-    freq = torch.load("out/s3/train/features.pt")["stat"][0]
+    freq = torch.load("out/collect/train/features.pt")["stat"][0]
     feats = freq.argsort()[torch.linspace(0, len(freq) - 1, 32).long()].tolist()
-    U = torch.load("out/s3/train/units.pt")["hi"][0].shape[-1]
+    U = torch.load("out/collect/train/units.pt")["hi"][0].shape[-1]
     rng = np.random.default_rng(0)
     units = [[l, int(rng.integers(U))] for l in range(0, 80, 3)]
     json.dump(dict(features=feats, units=units), open(TARGETS, "w"))
@@ -61,9 +61,9 @@ def main():
     seqs = data.sample().Sequence.tolist()
     ex = {}
     for split in ("train", "holdout"):
-        samp = torch.load(f"out/s3/{split}/sample.pt")
-        fhi = torch.load(f"out/s3/{split}/features.pt")["hi"][1]
-        uhi = torch.load(f"out/s3/{split}/units.pt")["hi"][1]
+        samp = torch.load(f"out/collect/{split}/sample.pt")
+        fhi = torch.load(f"out/collect/{split}/features.pt")["hi"][1]
+        uhi = torch.load(f"out/collect/{split}/units.pt")["hi"][1]
         for j in tg["features"]:
             off_ok = ~((samp["fidx"] == j) & (samp["fval"] > 0)).any(1)
             ex.setdefault(name("features", j), {})[split] = pairs(fhi[:, j], off_ok, samp, seqs)

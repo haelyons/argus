@@ -1,8 +1,8 @@
-"""Stage 6: gradients. For each target and example, activation * d(target)/d(activation)
+"""Gradients. For each target and example, activation * d(target)/d(activation)
 for every upstream unit and head at every position: the first-order effect of removing it.
 
 Target value: a feature's input (pre) at the on-position, or a unit's activation there.
-out/s6/<target>.pt
+out/gradients/<target>.pt
   rank           (blocks, U) mean over train examples of the position-summed unit score
   per split, per example:
     value        the target's value
@@ -20,7 +20,7 @@ import torch
 from argus import data, net, pick, sae
 from argus.runlog import Log
 
-OUT, TOP = "out/s6", 4096
+OUT, TOP = "out/gradients", 4096
 
 
 def upstream(kind, t):
@@ -55,7 +55,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shard", default="0/1")
     shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("s6", shard)
+    log = Log("gradients", shard)
     m, s = net.load(), sae.load()
     df = data.sample()
     os.makedirs(OUT, exist_ok=True)

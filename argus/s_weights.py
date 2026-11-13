@@ -1,6 +1,6 @@
-"""Stage 2, weights only. Everything is a cosine or a dot product of fixed vectors.
+"""Weights only. Everything is a cosine or a dot product of fixed vectors.
 
-out/s2/
+out/weights/
   norm.npy            (N, U)        write-vector norms
   enc_LL.npy          (U, F) f16    write @ feature read weight, for blocks before the SAE:
                                     activation * this / sd is the unit's direct share of pre
@@ -23,12 +23,7 @@ from argus import net, sae
 from argus.runlog import Log
 
 K, KH = 64, 32
-OUT = "out/s2"
-
-
-def centred(w, gain):
-    w = w * gain
-    return w - w.mean(-1, keepdim=True)
+OUT = "out/weights"
 
 
 def top_abs(vals, ids, k, dim):
@@ -47,14 +42,14 @@ def merge(run, vals, ids, dim, k=K):
 @torch.no_grad()
 def main():
     os.makedirs(OUT, exist_ok=True)
-    log = Log("s2")
+    log = Log("weights")
     m, s = net.load(), sae.load()
     bl = net.blocks(m)
     N, U, H = len(bl), bl[0].ffn.ffn_hidden_size, bl[0].attn.n_heads
     dev = "cuda"
     write = [net.out_weight(m, l) for l in range(N)]
-    read = [F.normalize(centred(b.ffn.fc1_weight, b.ffn.layer_norm_weight), dim=-1) for b in bl]
-    qkv = [centred(b.attn.layernorm_qkv.weight, b.attn.layernorm_qkv.layer_norm_weight).view(3, H, -1, 2560) for b in bl]
+    read = [F.normalize(net.centred(b.ffn.fc1_weight, b.ffn.layer_norm_weight), dim=-1) for b in bl]
+    qkv = [net.centred(b.attn.layernorm_qkv.weight, b.attn.layernorm_qkv.layer_norm_weight).view(3, H, -1, 2560) for b in bl]
     Wr, Wd = sae.read_weight(s), F.normalize(s.W_dec, dim=-1)
     feat = torch.arange(Wd.shape[0], device=dev)
 

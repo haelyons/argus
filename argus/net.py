@@ -42,6 +42,12 @@ def head_weight(m, l):
     return b.attn.out_proj.weight.T.view(b.attn.n_heads, b.attn.d_head, -1) / b.scaling_factor
 
 
+def centred(w, gain):
+    """Read rows with the LayerNorm gain and centring folded in (its input-dependent scale is not)."""
+    w = w * gain
+    return w - w.mean(-1, keepdim=True)
+
+
 def put(idx, val):
     """Edit that sets t[idx] = val. idx is an index tuple over (batch, pos, unit|head)."""
 

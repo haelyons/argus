@@ -66,3 +66,39 @@ def run(m, ids, states, rows, nu, U, src, valid, stop, tap=None):
 def new_value(op, a, c):
     """What an op makes of clean activation a, given contrast activation c."""
     return [torch.zeros_like(a), 2 * a, c][op]
+
+
+def capture(m, ids):
+    """Every block of one protein: activations a[l] (L, U), head outputs z[l] (L, H, dh), states x[l]."""
+    c = dict(a=[], z=[], x=[m.esmc.embed(ids)])
+
+    def tap(l, r):
+        c["a"].append(r["a"][0]), c["z"].append(r["z"][0]), c["x"].append(r["x"])
+
+    net.run(m, ids, x=c["x"][0], tap=tap)
+    return c
+
+
+def remove_hold(removed, hold_u, hold_h, c, U, H):
+    """Zero `removed`; pin units `hold_u` and heads `hold_h` to the capture c."""
+    ed = {}
+    for l in set((removed // U).tolist()) | set((hold_u // U).tolist()):
+        rem, hold = removed[removed // U == l] % U, hold_u[hold_u // U == l] % U
+
+        def f(a, g, v, l=l, rem=rem, hold=hold):
+            a = a.clone()
+            a[:, :, rem] = 0
+            a[:, :, hold] = c["a"][l][:, hold]
+            return a
+
+        ed["act", l] = f
+    for l in set((hold_h // H).tolist()):
+        hh = hold_h[hold_h // H == l] % H
+
+        def f(z, l=l, hh=hh):
+            z = z.clone()
+            z[:, :, hh] = c["z"][l][:, hh]
+            return z
+
+        ed["head", l] = f
+    return ed

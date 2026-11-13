@@ -1,6 +1,6 @@
-# sky launch -c argus sky.yaml --gpus A100-80GB:8 --env STAGE=s1     leaves the machine up
-# sky launch -c argus sky.yaml --gpus A100:1 --env STAGE=s1 --down   tears it down after
-# sky exec argus sky.yaml --env STAGE=s3                             next stage, same machine
+# sky launch -c argus sky.yaml --gpus A100-80GB:8 --env STAGE=s_checks     leaves the machine up
+# sky launch -c argus sky.yaml --gpus A100:1 --env STAGE=s_checks --down   tears it down after
+# sky exec argus sky.yaml --env STAGE=s_collect                            next stage, same machine
 # vendor/esm: git clone https://github.com/Biohub/esm vendor/esm  (run at fddac936)
 name: argus
 resources:
@@ -8,7 +8,7 @@ resources:
   accelerators: A100-80GB:8
 workdir: .
 envs:
-  STAGE: s1
+  STAGE: s_checks
   ARGS: ""
   GPUS: ""
 setup: |

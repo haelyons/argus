@@ -1,8 +1,8 @@
-"""Stage 8: what reads an edit. Apply one removal per target, record everything downstream that
+"""What reads an edit. Apply one removal per target, record everything downstream that
 moves, then repeat it with the strongest readers held at their clean values.
 
 The removal: for a feature target, its 64 top gradient-ranked units; for a unit target, the unit.
-out/s8/<target>.pt, per example:
+out/readers/<target>.pt, per example:
   removed        unit ids
   units          the 1024 other units that moved most: ids, signed and absolute change summed over
                  positions (ranked by absolute change * write norm)
@@ -23,51 +23,16 @@ import os
 import numpy as np
 import torch
 
-from argus import data, net, pick, sae
+from argus import data, edit, net, pick, sae
 from argus.runlog import Log
 
-OUT, GROUP, R_UNITS, R_HEADS, K_UNITS, K_FEATS = "out/s8", 64, 64, 8, 1024, 256
+OUT, GROUP, R_UNITS, R_HEADS, K_UNITS, K_FEATS = "out/readers", 64, 64, 8, 1024, 256
 RUN = ["pre", "value", "feature_change", "kl", "mloss", "mlogp"]
-
-
-def capture(m, ids):
-    c = dict(a=[], z=[], x=[m.esmc.embed(ids)])
-
-    def tap(l, r):
-        c["a"].append(r["a"][0]), c["z"].append(r["z"][0]), c["x"].append(r["x"])
-
-    net.run(m, ids, x=c["x"][0], tap=tap)
-    return c
 
 
 def feats(s, x60):
     pre, val, ind, _ = sae.encode(s, x60[0])
     return pre, torch.zeros_like(pre).scatter(1, ind, val)
-
-
-def edits(removed, hold_u, hold_h, c, U, H):
-    """Zero `removed`; pin units `hold_u` and heads `hold_h` to the capture c."""
-    ed = {}
-    for l in set((removed // U).tolist()) | set((hold_u // U).tolist()):
-        rem, hold = removed[removed // U == l] % U, hold_u[hold_u // U == l] % U
-
-        def f(a, g, v, l=l, rem=rem, hold=hold):
-            a = a.clone()
-            a[:, :, rem] = 0
-            a[:, :, hold] = c["a"][l][:, hold]
-            return a
-
-        ed["act", l] = f
-    for l in set((hold_h // H).tolist()):
-        hh = hold_h[hold_h // H == l] % H
-
-        def f(z, l=l, hh=hh):
-            z = z.clone()
-            z[:, :, hh] = c["z"][l][:, hh]
-            return z
-
-        ed["head", l] = f
-    return ed
 
 
 def run_example(m, s, ids, e, kind, t, removed, norm, log):
@@ -77,7 +42,7 @@ def run_example(m, s, ids, e, kind, t, removed, norm, log):
     labels[0, pos], mids[0, pos] = int(ids[0, pos]), net.MASK
     mids, labels = mids.cuda(), labels.cuda()
     with log.op("capture", 2 * ids.numel()):
-        c, cm = capture(m, ids), capture(m, mids)
+        c, cm = edit.capture(m, ids), edit.capture(m, mids)
     pre0, f0 = feats(s, c["x"][sae.LAYER])
     lp0 = net.logits(m, c["x"][N]).float().log_softmax(-1)[0]
     j = t if kind == "features" else None
@@ -92,8 +57,8 @@ def run_example(m, s, ids, e, kind, t, removed, norm, log):
                 tap(l, r)
 
         with log.op("edited_pass", 2 * ids.numel()):
-            x = net.run(m, ids, x=c["x"][start], start=start, edits=edits(removed, hold_u, hold_h, c, U, H), tap=tp)
-            xm = net.run(m, mids, x=cm["x"][start], start=start, edits=edits(removed, hold_u, hold_h, cm, U, H))
+            x = net.run(m, ids, x=c["x"][start], start=start, edits=edit.remove_hold(removed, hold_u, hold_h, c, U, H), tap=tp)
+            xm = net.run(m, mids, x=cm["x"][start], start=start, edits=edit.remove_hold(removed, hold_u, hold_h, cm, U, H))
         pre, f = feats(s, x60.get("x", c["x"][sae.LAYER]))
         lp = net.logits(m, x).float().log_softmax(-1)[0]
         kl = (lp0.exp() * (lp0 - lp)).sum(-1).mean()
@@ -129,15 +94,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shard", default="0/1")
     shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("s8", shard)
+    log = Log("readers", shard)
     m, s = net.load(), sae.load()
     df = data.sample()
-    norm = torch.from_numpy(np.load("out/s2/norm.npy")).cuda()
+    norm = torch.from_numpy(np.load("out/weights/norm.npy")).cuda()
     U = norm.shape[1]
     os.makedirs(OUT, exist_ok=True)
     for name, kind, t, ex in pick.targets(shard):
         if kind == "features":
-            removed = torch.load(f"out/s7/{name}.pt")["rankings"]["grad"][:GROUP].cuda()
+            removed = torch.load(f"out/group_edits/{name}.pt")["rankings"]["grad"][:GROUP].cuda()
         else:
             removed = torch.tensor([t[0] * U + t[1]], device="cuda")
         rec = []

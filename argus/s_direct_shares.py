@@ -1,15 +1,15 @@
-"""Stage 4: direct shares of each feature's input, averaged over the tokens where it fires.
+"""Direct shares of each feature's input, averaged over the tokens where it fires.
 
 pre = (state[60] @ W) / sd - c, and state[60] = embedding + sum of every head and unit write
 before block 60, so pre splits exactly into one share per unit, per head and the embedding.
 Shares see only writers at the same position; what attention moved shows up as head shares.
 
-out/s4/<split>/
+out/direct_shares/<split>/
   unit_LL.npy   (F, U) f16   mean share of each unit of block LL
   parts.pt      head (F, 60, H), embed (F,), const (F,), pre (F,) mean input when firing,
                 tokens (F,), base (60, U) mean of activation/sd over all tokens
                 check: head.sum + unit.sum + embed - const == pre
-python -m argus.s4 --shard i/n | --reduce
+python -m argus.s_direct_shares --shard i/n | --reduce
 """
 
 import argparse
@@ -22,7 +22,7 @@ import torch
 from argus import data, net, sae
 from argus.runlog import Log
 
-OUT = "out/s4"
+OUT = "out/direct_shares"
 BUDGET = 6144
 
 
@@ -77,7 +77,7 @@ def collect(m, s, df, shard, out, log):
 
 
 def reduce():
-    log = Log("s4-reduce")
+    log = Log("direct_shares-reduce")
     for split in ("train", "holdout"):
         dirs = sorted(glob.glob(f"{OUT}/{split}/shard*"))
         out = f"{OUT}/{split}"
@@ -110,7 +110,7 @@ def main():
     if a.reduce:
         return reduce()
     shard = tuple(map(int, a.shard.split("/")))
-    log = Log("s4", shard)
+    log = Log("direct_shares", shard)
     m, s = net.load(), sae.load()
     df = data.sample()
     log.plain(m, next(data.batches(df, BUDGET, shard))[1].cuda())
