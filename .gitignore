@@ -6,3 +6,4 @@ data/features.parquet
 vendor/
 __pycache__/
 logs/
+COMMIT

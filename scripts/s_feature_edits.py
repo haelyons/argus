@@ -4,17 +4,13 @@ reconstruction error in place), do later units, heads and predicted residues cha
 when its 64 units are removed?
 """
 
-import argparse
-import os
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-from argus import data, edit, net, pick, sae
-from argus.runlog import Log
+from argus import data, edit, net, pick, runlog, sae
 
-OUT, K, R = "out/feature_edits", 256, 64
+K, R = 256, 64
 
 
 def run_example(m, s, ids, e, j, removed, norm, log):
@@ -74,18 +70,14 @@ def run_example(m, s, ids, e, j, removed, norm, log):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("feature_edits", shard)
+    log = runlog.start("feature_edits", __doc__)
     m, s = net.load(), sae.load()
-    df = data.sample()
-    norm = torch.from_numpy(np.load("out/weights/norm.npy")).cuda()
-    os.makedirs(OUT, exist_ok=True)
-    for name, kind, t, ex in pick.targets(shard):
+    df = data.sample(log.input)
+    norm = torch.from_numpy(np.load(log.read("weights", "none") + "/norm.npy")).cuda()
+    for name, kind, t, ex in pick.targets(log.input, log.shard):
         if kind != "features":
             continue
-        removed = torch.load(f"out/readers/{name}.pt")[0]["removed"].cuda()
+        removed = torch.load(f"{log.read('readers')}/{name}.pt")[0]["removed"].cuda()
         rec = []
         for split, pairs in ex.items():
             for e in pairs:
@@ -94,7 +86,7 @@ def main():
                     log.plain(m, ids)
                 with torch.no_grad():
                     rec.append(dict(run_example(m, s, ids, e, t, removed, norm, log), split=split))
-        torch.save(rec, f"{OUT}/{name}.pt")
+        torch.save(rec, f"{log.dir}/{name}.pt")
         log.note(done=name)
     log.write()
 

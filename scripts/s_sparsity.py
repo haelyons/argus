@@ -2,25 +2,21 @@
 before ESM C 6B predicts masked residues worse?
 """
 
-import argparse
 import glob
-import os
 
 import numpy as np
 import torch
 
-from argus import data, net
-from argus.runlog import Log
+from argus import data, net, runlog
 
-OUT = "out/sparsity"
 FRACS = [0.5, 0.75, 0.9, 0.95, 0.98, 0.99, 0.995, 0.998, 0.999]
 SIGNS = {"g+v+": (1, 1), "g+v-": (1, 0), "g-v+": (0, 1), "g-v-": (0, 0), "g-": (0, None), "v-": (None, 0)}
 CONDS = ["none"] + [f"weakest_{f}" for f in FRACS] + list(SIGNS)
 PROTEINS, SEED, BUDGET, THR_TOKENS = 1024, 0, 8192, 512
 
 
-def thresholds(norm):
-    acts = torch.load("out/collect/train/sample.pt")["acts"][:THR_TOKENS].cuda().float()
+def thresholds(norm, collect):
+    acts = torch.load(f"{collect}/train/sample.pt")["acts"][:THR_TOKENS].cuda().float()
     size = (acts.abs() * norm).flatten().sort().values
     return [size[int(f * len(size))].item() for f in FRACS]
 
@@ -46,21 +42,16 @@ def removal(cond, thr, wn, tally):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    ap.add_argument("--reduce", action="store_true")
-    a = ap.parse_args()
-    if a.reduce:
-        return reduce()
-    shard = tuple(map(int, a.shard.split("/")))
-    log = Log("sparsity", shard)
+    log = runlog.start("sparsity", __doc__)
+    if log.reduce:
+        return reduce(log)
+    shard, OUT = log.shard, log.dir
     m = net.load()
     N = len(net.blocks(m))
-    norm = torch.from_numpy(np.load("out/weights/norm.npy")).cuda()
-    thr = thresholds(norm)
+    norm = torch.from_numpy(np.load(log.read("weights", "none") + "/norm.npy")).cuda()
+    thr = thresholds(norm, log.read("collect"))
     log.note(thr=thr)
-    df = data.sample()
-    os.makedirs(OUT, exist_ok=True)
+    df = data.sample(log.input)
     for split in ("train", "holdout"):
         part = df[df.split == split].sample(PROTEINS, random_state=SEED)
         rows, tally, nb = [], torch.zeros(len(CONDS), N, 2, device="cuda"), 0
@@ -83,8 +74,8 @@ def main():
     log.write()
 
 
-def reduce():
-    log = Log("sparsity-reduce")
+def reduce(log):
+    OUT = log.dir
     for split in ("train", "holdout"):
         ps = [torch.load(f) for f in sorted(glob.glob(f"{OUT}/{split}-shard*.pt"))]
         nb = sum(p["batches"] for p in ps)

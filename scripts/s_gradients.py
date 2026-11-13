@@ -3,15 +3,11 @@ strongest, which earlier units and attention heads, at which residues, would cha
 removed, to first order (activation times gradient)?
 """
 
-import argparse
-import os
-
 import torch
 
-from argus import data, net, pick, sae
-from argus.runlog import Log
+from argus import data, net, pick, runlog, sae
 
-OUT, TOP = "out/gradients", 4096
+TOP = 4096
 
 
 def upstream(kind, t):
@@ -43,14 +39,10 @@ def attribute(m, s, ids, kind, t, pos):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("gradients", shard)
+    log = runlog.start("gradients", __doc__)
     m, s = net.load(), sae.load()
-    df = data.sample()
-    os.makedirs(OUT, exist_ok=True)
-    for name, kind, t, ex in pick.targets(shard):
+    df = data.sample(log.input)
+    for name, kind, t, ex in pick.targets(log.input, log.shard):
         rec = {}
         for split, pairs in ex.items():
             rec[split] = []
@@ -61,7 +53,7 @@ def main():
                 with log.op("forward_backward", ids.numel()):
                     rec[split].append(attribute(m, s, ids, kind, t, e["on"][1]) | e)
         rec["rank"] = torch.stack([r["unit_sum"] for r in rec["train"]]).mean(0)
-        torch.save(rec, f"{OUT}/{name}.pt")
+        torch.save(rec, f"{log.dir}/{name}.pt")
         log.note(done=name)
     log.write()
 

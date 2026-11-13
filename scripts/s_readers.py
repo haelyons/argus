@@ -3,16 +3,12 @@ units, attention heads and SAE features change, and how much of the change in pr
 left when the most-changed units and heads are held at their unedited values?
 """
 
-import argparse
-import os
-
 import numpy as np
 import torch
 
-from argus import data, edit, net, pick, sae
-from argus.runlog import Log
+from argus import data, edit, net, pick, runlog, sae
 
-OUT, GROUP, R_UNITS, R_HEADS, K_UNITS, K_FEATS = "out/readers", 64, 64, 8, 1024, 256
+GROUP, R_UNITS, R_HEADS, K_UNITS, K_FEATS = 64, 64, 8, 1024, 256
 RUN = ["pre", "value", "feature_change", "kl", "mloss", "mlogp"]
 
 
@@ -77,18 +73,14 @@ def run_example(m, s, ids, e, kind, t, removed, norm, log):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("readers", shard)
+    log = runlog.start("readers", __doc__)
     m, s = net.load(), sae.load()
-    df = data.sample()
-    norm = torch.from_numpy(np.load("out/weights/norm.npy")).cuda()
+    df = data.sample(log.input)
+    norm = torch.from_numpy(np.load(log.read("weights", "none") + "/norm.npy")).cuda()
     U = norm.shape[1]
-    os.makedirs(OUT, exist_ok=True)
-    for name, kind, t, ex in pick.targets(shard):
+    for name, kind, t, ex in pick.targets(log.input, log.shard):
         if kind == "features":
-            removed = torch.load(f"out/group_edits/{name}.pt")["rankings"]["grad"][:GROUP].cuda()
+            removed = torch.load(f"{log.read('group_edits')}/{name}.pt")["rankings"]["grad"][:GROUP].cuda()
         else:
             removed = torch.tensor([t[0] * U + t[1]], device="cuda")
         rec = []
@@ -99,7 +91,7 @@ def main():
                     log.plain(m, ids)
                 with torch.no_grad():
                     rec.append(dict(run_example(m, s, ids, e, kind, t, removed, norm, log), split=split))
-        torch.save(rec, f"{OUT}/{name}.pt")
+        torch.save(rec, f"{log.dir}/{name}.pt")
         log.note(done=name)
     log.write()
 

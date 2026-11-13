@@ -3,17 +3,13 @@ the SAE feature (or unit) at that residue change, and do masked-residue predicti
 ranking of units finds the group, and how large must it be?
 """
 
-import argparse
-import os
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-from argus import data, edit, net, pick, sae
-from argus.runlog import Log
+from argus import data, edit, net, pick, runlog, sae
 
-OUT, BUDGET, SINGLES, TOPN = "out/group_edits", 12288, 16, 1024
+BUDGET, SINGLES, TOPN = 12288, 16, 1024
 SIZES = [2**i for i in range(11)]
 
 
@@ -27,11 +23,11 @@ def row_ids(rankings, row, n_group):
     return rankings[r][:n] if n_group else rankings[r][n : n + 1]
 
 
-def feature_scores(j, grad, stats):
+def feature_scores(j, grad, stats, dirs):
     L = sae.LAYER
-    share = np.stack([np.load(f"out/direct_shares/train/unit_{l:02d}.npy", mmap_mode="r")[j] for l in range(L)])
-    cond = np.stack([np.load(f"out/collect/train/cond_{l:02d}.npy", mmap_mode="r")[j] for l in range(L)])
-    enc = np.stack([np.load(f"out/weights/enc_{l:02d}.npy", mmap_mode="r")[:, j] for l in range(L)])
+    share = np.stack([np.load(f"{dirs['direct_shares']}/train/unit_{l:02d}.npy", mmap_mode="r")[j] for l in range(L)])
+    cond = np.stack([np.load(f"{dirs['collect']}/train/cond_{l:02d}.npy", mmap_mode="r")[j] for l in range(L)])
+    enc = np.stack([np.load(f"{dirs['weights']}/enc_{l:02d}.npy", mmap_mode="r")[:, j] for l in range(L)])
     mean, std, norm = (x[:L] for x in stats)
     t = lambda x: torch.from_numpy(x.astype(np.float32)).cuda()
     return dict(grad=grad.cuda(), share=t(share), comove=(t(cond) - mean) / std, weight=t(enc) / norm)
@@ -154,30 +150,27 @@ def run_example(tg, ids, e, rankings, rows, log, U):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("group_edits", shard)
+    log = runlog.start("group_edits", __doc__)
     m, s = net.load(), sae.load()
-    df = data.sample()
+    df = data.sample(log.input)
+    dirs = {op: log.read(op) for op in ("collect", "direct_shares", "gradients")} | {"weights": log.read("weights", "none")}
     U = net.blocks(m)[0].ffn.ffn_hidden_size
-    st = torch.load("out/collect/train/units.pt")
+    st = torch.load(dirs["collect"] + "/train/units.pt")
     mean = (st["stat"][:, 0] / st["n"]).float().cuda()
     std = ((st["stat"][:, 1] / st["n"]).float().cuda() - mean**2).clamp(min=1e-12).sqrt()
-    stats = (mean, std, torch.from_numpy(np.load("out/weights/norm.npy")).cuda())
-    todo = pick.targets(shard)
-    samp = torch.load("out/collect/train/sample.pt")["acts"] if any(k == "units" for _, k, _, _ in todo) else None
-    os.makedirs(OUT, exist_ok=True)
+    stats = (mean, std, torch.from_numpy(np.load(dirs["weights"] + "/norm.npy")).cuda())
+    todo = pick.targets(log.input, log.shard)
+    samp = torch.load(dirs["collect"] + "/train/sample.pt")["acts"] if any(k == "units" for _, k, _, _ in todo) else None
     used = full = 0
     for name, kind, t, ex in todo:
         tg = Target(m, s, kind, t)
         tg.df = df
         if tg.nu == 0:
             continue
-        grad = torch.load(f"out/gradients/{name}.pt")["rank"]
+        grad = torch.load(f"{dirs['gradients']}/{name}.pt")["rank"]
         with log.stage("rankings"), torch.no_grad():
             if kind == "features":
-                scores = feature_scores(t, grad, stats)
+                scores = feature_scores(t, grad, stats, dirs)
             else:
                 share = []
                 for e in ex["train"]:
@@ -198,7 +191,7 @@ def main():
                     r, a, b = run_example(tg, ids, e, rankings, rows, log, U)
                 rec["examples"].append(dict(r, split=split))
                 used, full = used + a, full + b
-        torch.save(rec, f"{OUT}/{name}.pt")
+        torch.save(rec, f"{log.dir}/{name}.pt")
         log.note(done=name)
     log.cheaper("edited passes", before=f"{full} block-tokens recomputing every block",
                 after=f"{used} block-tokens resuming from the clean state below the first edited block")

@@ -3,22 +3,16 @@ every unit's gate, value and activation, every attention head's output and every
 state? What does each kind of access cost?
 """
 
-import argparse
-
 import torch
 
-from argus import data, net, sae
+from argus import data, net, runlog, sae
 from argus.checks import checks
-from argus.runlog import Log
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    shard = tuple(map(int, ap.parse_args().shard.split("/")))
-    log = Log("checks", shard)
+    log = runlog.start("checks", __doc__)
     m, s = net.load(), sae.load()
-    idx, ids = next(data.batches(data.sample(), budget=8192, shard=shard))
+    idx, ids = next(data.batches(data.sample(log.input), budget=8192, shard=log.shard))
     ids = ids.cuda()
     n = ids.numel()
     with torch.no_grad():
@@ -31,7 +25,7 @@ def main():
             net.logits(m, net.run(m, ids, tap=nop))
         with log.op("forward_with_patterns", n):
             net.logits(m, net.run(m, ids, tap=nop, pattern=True))
-    one = ids[:2]
+    one = ids[:1]
     acts = []
     with log.op("forward_backward_all_units", one.numel()):
         x = net.run(m, one, x=m.esmc.embed(one).requires_grad_(), stop=sae.LAYER, tap=lambda l, r: (r["a"].retain_grad(), acts.append(r["a"])))

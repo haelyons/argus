@@ -8,11 +8,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from argus import net, sae
-from argus.runlog import Log
+from argus import net, runlog, sae
 
 K, KH = 64, 32
-OUT = "out/weights"
 
 
 def top_abs(vals, ids, k, dim):
@@ -30,8 +28,8 @@ def merge(run, vals, ids, dim, k=K):
 
 @torch.no_grad()
 def main():
-    os.makedirs(OUT, exist_ok=True)
-    log = Log("weights")
+    log = runlog.start("weights", __doc__, input="none")
+    OUT = log.dir
     m, s = net.load(), sae.load()
     bl = net.blocks(m)
     N, U, H = len(bl), bl[0].ffn.ffn_hidden_size, bl[0].attn.n_heads

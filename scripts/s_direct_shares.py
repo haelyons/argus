@@ -2,17 +2,14 @@
 residue by each unit, each attention head and the amino-acid embedding?
 """
 
-import argparse
 import glob
 import os
 
 import numpy as np
 import torch
 
-from argus import data, net, sae
-from argus.runlog import Log
+from argus import data, net, runlog, sae
 
-OUT = "out/direct_shares"
 BUDGET = 6144
 
 
@@ -66,8 +63,8 @@ def collect(m, s, df, shard, out, log):
     torch.cuda.empty_cache()
 
 
-def reduce():
-    log = Log("direct_shares-reduce")
+def reduce(log):
+    OUT = log.dir
     for split in ("train", "holdout"):
         dirs = sorted(glob.glob(f"{OUT}/{split}/shard*"))
         out = f"{OUT}/{split}"
@@ -93,16 +90,11 @@ def reduce():
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    ap.add_argument("--reduce", action="store_true")
-    a = ap.parse_args()
-    if a.reduce:
-        return reduce()
-    shard = tuple(map(int, a.shard.split("/")))
-    log = Log("direct_shares", shard)
+    log = runlog.start("direct_shares", __doc__)
+    if log.reduce:
+        return reduce(log)
     m, s = net.load(), sae.load()
-    df = data.sample()
+    df, shard, OUT = data.sample(log.input), log.shard, log.dir
     log.plain(m, next(data.batches(df, BUDGET, shard))[1].cuda())
     for split in ("train", "holdout"):
         with log.stage(split):

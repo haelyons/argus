@@ -2,19 +2,16 @@
 units are active at the residues where a feature fires?
 """
 
-import argparse
 import glob
 import os
 
 import numpy as np
 import torch
 
-from argus import data, net, sae
+from argus import data, net, runlog, sae
 from argus.checks import checks
 from argus.collect import extremes
-from argus.runlog import Log
 
-OUT = "out/collect"
 K, S, BUDGET = 32, 8192, 8192
 STAT = ["a", "a2", "g", "g2", "v", "v2", "n_g+v+", "n_g+v-", "n_g-v+", "a_g+v+", "a_g+v-", "a_g-v+", "a_g-v-", "n_a>0"]
 FSTAT = ["tokens", "proteins", "f", "f2"]
@@ -34,7 +31,7 @@ def collect(m, s, df, shard, out, log):
         ids = ids.to(dev)
         keep = ids != net.PAD
         T = int(keep.sum())
-        tok = (torch.from_numpy(idx).to(dev)[:, None] * 1024 + torch.arange(ids.shape[1], device=dev))[keep]
+        tok = (torch.from_numpy(idx).to(dev)[:, None] * data.STRIDE + torch.arange(ids.shape[1], device=dev))[keep]
         pick = torch.rand(T, device=dev, generator=torch.Generator(dev).manual_seed(int(idx[0]))) < p
         held, acts, fs = [], [], None
 
@@ -100,8 +97,8 @@ def merge_ext_lo(parts, k):
     return -v, t
 
 
-def reduce():
-    log = Log("collect-reduce")
+def reduce(log):
+    OUT = log.dir
     for split in ("train", "holdout"):
         dirs = sorted(glob.glob(f"{OUT}/{split}/shard*"))
         out = f"{OUT}/{split}"
@@ -122,16 +119,11 @@ def reduce():
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--shard", default="0/1")
-    ap.add_argument("--reduce", action="store_true")
-    a = ap.parse_args()
-    if a.reduce:
-        return reduce()
-    shard = tuple(map(int, a.shard.split("/")))
-    log = Log("collect", shard)
+    log = runlog.start("collect", __doc__)
+    if log.reduce:
+        return reduce(log)
     m, s = net.load(), sae.load()
-    df = data.sample()
+    df, shard, OUT = data.sample(log.input), log.shard, log.dir
     ids = next(data.batches(df[df.split == "train"], BUDGET, shard))[1].cuda()
     log.plain(m, ids)
     with torch.no_grad():

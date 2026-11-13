@@ -3,3 +3,5 @@ out/
 data/raw/
 vendor/esm/.git/
 __pycache__/
+.venv/
+logs/
