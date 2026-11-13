@@ -1,13 +1,5 @@
-"""How sparse can the network's own units be made, measured by masked-prediction loss.
-
-An activation's size is |activation| * its write norm. Thresholds are global quantiles of that
-size over the s_collect token sample; removal is applied inside the running network, every block.
-Sign conditions remove every activation in one gate/value quadrant instead.
-
-out/sparsity/<split>.pt  conds, protein idx, loss (P, C) summed over masked positions, masked (P,),
-                   removed (C, N) fraction of activations removed per block,
-                   mass (C, N) fraction of activation size removed per block, thr
-python -m argus.s_sparsity --shard i/n | --reduce
+"""How many unit activations can be set to zero, smallest first or by the signs of gate and value,
+before ESM C 6B predicts masked residues worse?
 """
 
 import argparse

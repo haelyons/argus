@@ -1,15 +1,6 @@
-"""Gradients. For each target and example, activation * d(target)/d(activation)
-for every upstream unit and head at every position: the first-order effect of removing it.
-
-Target value: a feature's input (pre) at the on-position, or a unit's activation there.
-out/gradients/<target>.pt
-  rank           (blocks, U) mean over train examples of the position-summed unit score
-  per split, per example:
-    value        the target's value
-    unit_sum     (blocks, U) score summed over positions
-    unit_pos     (blocks, L) sum of |score| over units, per position
-    top          the 4096 largest |score| entries as flat indices into (blocks, L, U), and scores
-    head         (blocks, L, H) f16 head scores
+"""For one SAE feature (its encoder input) or one unit (its activation) at a residue where it is
+strongest, which earlier units and attention heads, at which residues, would change it most if
+removed, to first order (activation times gradient)?
 """
 
 import argparse

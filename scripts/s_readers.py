@@ -1,20 +1,6 @@
-"""What reads an edit. Apply one removal per target, record everything downstream that
-moves, then repeat it with the strongest readers held at their clean values.
-
-The removal: for a feature target, its 64 top gradient-ranked units; for a unit target, the unit.
-out/readers/<target>.pt, per example:
-  removed        unit ids
-  units          the 1024 other units that moved most: ids, signed and absolute change summed over
-                 positions (ranked by absolute change * write norm)
-  block_change   (N,) absolute change * write norm, summed over each block's units
-  heads          (N, H) norm of each head's output change, summed over positions
-  features       the 256 features that moved most: ids, change summed over positions, change at the on-position
-  held_units, held_heads   the readers held fixed: top 64 units, top 8 heads
-  runs           rows = [edit, edit + units held, edit + heads held, edit + both held]
-                 cols = RUN: target at the on-position where it is not itself edited, size of the
-                 change over all features, mean KL of the predictions on the intact input, and on
-                 the masked input the loss and the on-position log-prob
-  clean          the same quantities unedited
+"""When the 64 units that most support an SAE feature (or one chosen unit) are removed, which later
+units, attention heads and SAE features change, and how much of the change in predicted residues is
+left when the most-changed units and heads are held at their unedited values?
 """
 
 import argparse

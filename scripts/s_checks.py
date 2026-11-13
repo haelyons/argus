@@ -1,4 +1,7 @@
-"""The three standing checks on the first real batch, and what each access costs."""
+"""Does our forward pass of ESM C 6B give exactly Biohub's logits and SAE feature values while exposing
+every unit's gate, value and activation, every attention head's output and every block's residual
+state? What does each kind of access cost?
+"""
 
 import argparse
 

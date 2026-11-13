@@ -1,16 +1,5 @@
-"""Weights only. Everything is a cosine or a dot product of fixed vectors.
-
-out/weights/
-  norm.npy            (N, U)        write-vector norms
-  enc_LL.npy          (U, F) f16    write @ feature read weight, for blocks before the SAE:
-                                    activation * this / sd is the unit's direct share of pre
-  dec_top.pt          per unit, K features of largest |cos(write, decoder direction)|
-  readers.pt          per unit, K later unit inputs of largest |cos(write, read row)|
-  writers.pt          per unit input (gate rows then value rows), K earlier units, same cosine
-  heads.pt            per unit and per q|k|v, K later heads by the share of the read map's
-                      norm that the write direction picks up
-Global ids: unit = layer*U + u; unit input = layer*2U + row (row < U gate, else value); head = layer*H + h.
-Read rows fold in the LayerNorm gain and centring; the LayerNorm scale is input-dependent and left out.
+"""From the weights alone, which SAE features does each unit write toward, and which later units and
+attention heads could read what it writes?
 """
 
 import os

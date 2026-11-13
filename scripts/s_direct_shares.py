@@ -1,15 +1,5 @@
-"""Direct shares of each feature's input, averaged over the tokens where it fires.
-
-pre = (state[60] @ W) / sd - c, and state[60] = embedding + sum of every head and unit write
-before block 60, so pre splits exactly into one share per unit, per head and the embedding.
-Shares see only writers at the same position; what attention moved shows up as head shares.
-
-out/direct_shares/<split>/
-  unit_LL.npy   (F, U) f16   mean share of each unit of block LL
-  parts.pt      head (F, 60, H), embed (F,), const (F,), pre (F,) mean input when firing,
-                tokens (F,), base (60, U) mean of activation/sd over all tokens
-                check: head.sum + unit.sum + embed - const == pre
-python -m argus.s_direct_shares --shard i/n | --reduce
+"""When an SAE feature fires at a residue, how much of its encoder input was written at that same
+residue by each unit, each attention head and the amino-acid embedding?
 """
 
 import argparse

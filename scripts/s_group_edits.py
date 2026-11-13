@@ -1,21 +1,6 @@
-"""Edit groups of upstream units and measure the target and the predictions.
-
-Rankings of upstream units, each scored from train data only (higher = supports the target):
-  grad     s_gradients score      share   direct share (s_direct_shares; for unit targets, of the gate input)
-  comove   s_collect co-movement   weight  write/read alignment (as in s_weights)
-  random   a fixed random set
-Rows per example: every ranking x sizes 1..1024 x {remove, raise, copy}, plus single removals of
-each ranking's top 16. Intact input: the target at the on-position. Masked input (the seeded
-mask plus the on-position): loss over masked positions, log-prob of the true residue there;
-group remove/copy rows only.
-
-out/group_edits/<target>.pt
-  rankings {name: 1024 unit ids}; rows [(ranking, size or rank, op)]
-  examples: split, on, off, coverage (share of positions the contrast covers), clean {..}, cols,
-            out (rows, cols). Feature cols: pre, value, value summed over positions.
-            Unit cols: activation. Then: direct (what same-position direct shares predict for the
-            first col's change), mloss, mlogp (nan where not run).
-Sum of single edits: add the single rows' changes for a ranking's first n units.
+"""Does a group of earlier units produce the target? When the group is removed, raised or copied, does
+the SAE feature (or unit) at that residue change, and do masked-residue predictions change? Which
+ranking of units finds the group, and how large must it be?
 """
 
 import argparse

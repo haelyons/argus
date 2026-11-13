@@ -1,15 +1,5 @@
-"""One pass over the sample, per split, everything at once.
-
-out/collect/<split>/
-  units.pt     n tokens; stat (N, 14, U) sums over tokens, rows = STAT;
-               hi, lo (N, K, U) strongest examples at each end as values and token ids
-  features.pt  stat (4, F) rows = FSTAT; hi (K, F) values and token ids
-  sample.pt    a random set of tokens captured densely: tok (S,), acts (S, N, U) f16,
-               feature values and indices (S, 64), residue token (S,)
-  cond_LL.npy  (F, U) f16: mean activation of each unit of block LL over tokens where the feature fires
-Token id = protein index * 1024 + position (position 0 is <cls>).
-python -m argus.s_collect --shard i/n     collect one shard
-python -m argus.s_collect --reduce        merge shards
+"""On real proteins, how strongly is each unit active, where does each SAE feature fire, and which
+units are active at the residues where a feature fires?
 """
 
 import argparse

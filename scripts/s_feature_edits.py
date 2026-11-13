@@ -1,19 +1,7 @@
-"""Edit the feature itself and ask whether the same readers and predictions move as
-when its unit group is removed.
-
-A feature edit changes state[60] by (f' - f) * decoder direction * sd at every position where
-the feature fires, which leaves the SAE's reconstruction error in place. The masked input gets
-the same state change (the SAE itself is never run on masked input).
-Edits compared, per example of each feature target:
-  feat_remove (f' = 0), feat_raise (f' = 2f), group_remove (the unit group s_readers removed)
-
-out/feature_edits/<target>.pt, per example:
-  per edit: units     top 256 units in blocks >= 60 by absolute change * write norm: ids, signed change
-            block_change (20,), heads (20, H) as in s_readers
-            kl, logp (intact input, on-position true residue), mloss, mlogp, dlogits (64,) at the on-position
-  clean:    logp, mloss, mlogp
-  agree:    feat_remove vs group_remove, and feat_remove vs feat_raise (expect about -1): cosines of the
-            full change in later units, head outputs, logits and state[60]; overlap of the top-64 readers
+"""Do later blocks read the SAE feature itself? If the feature is taken out of the residual state
+entering block 60 (subtracting its value times its decoder direction, leaving the SAE's
+reconstruction error in place), do later units, heads and predicted residues change the same way as
+when its 64 units are removed?
 """
 
 import argparse
