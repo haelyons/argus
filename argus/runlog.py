@@ -9,7 +9,7 @@ Each process writes run-<shard>.json there:
                An op entered k times per pass is given tokens / k each time.
   stages       seconds by named span
   cheaper      before/after pairs, when an operation was replaced by a cheaper one
-python -m argus.runlog          writes out/runs.jsonl, one row per run
+python -m argus.runlog          writes out/runs.jsonl, one row per run, keeping rows already there
 """
 
 import argparse
@@ -131,6 +131,9 @@ def index():
             peak_gpu_gb=max(r.get("peak_gpu_gb", 0) for r in rs), peak_host_gb=max(r.get("peak_host_gb", 0) for r in rs),
             notes={k: v for r in rs for k, v in r["notes"].items()}, cheaper=[c for r in rs for c in r["cheaper"]],
         ))
+    if os.path.exists("out/runs.jsonl"):
+        new = {r["path"] for r in rows}
+        rows = [r for r in map(json.loads, open("out/runs.jsonl")) if r["path"] not in new] + rows
     with open("out/runs.jsonl", "w") as f:
         for r in rows:
             f.write(json.dumps(r, default=str) + "\n")
