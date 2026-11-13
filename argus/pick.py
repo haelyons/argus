@@ -85,5 +85,13 @@ def ids_of(df, protein):
     return torch.from_numpy(data.tokens(df.Sequence[protein]))[None].cuda()
 
 
+def describe():
+    """targets_features.csv: Biohub's description columns for the target features only."""
+    import pandas as pd
+
+    d = pd.read_parquet("data/features.parquet", columns=["feature_id", "category", "summary", "activation_pattern", "threshold", "uniref90_frequency", "uniref90_max_activation", "uniref90_idf"])
+    d[d.feature_id.isin(json.load(open(TARGETS))["features"])].to_csv("targets_features.csv", index=False)
+
+
 if __name__ == "__main__":
     main()
