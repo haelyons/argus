@@ -1,0 +1,64 @@
+{
+ "stage": "s3",
+ "shard": [
+  1,
+  8
+ ],
+ "argv": [
+  "/home/ubuntu/sky_workdir/argus/s3.py",
+  "--shard",
+  "1/8"
+ ],
+ "tok_s": 1341.7546469985557,
+ "ops": {
+  "unit_stats": {
+   "seconds": 1.0735688209533691,
+   "tokens": 652800,
+   "fwd_equiv": 0.00220659613110745
+  },
+  "unit_extremes": {
+   "seconds": 0.49401426315307617,
+   "tokens": 652800,
+   "fwd_equiv": 0.0010153889909148396
+  },
+  "features": {
+   "seconds": 0.07521605491638184,
+   "tokens": 8160,
+   "fwd_equiv": 0.012367829805509056
+  },
+  "feature_by_unit_held": {
+   "seconds": 2.10858416557312,
+   "tokens": 8160,
+   "fwd_equiv": 0.34671600523839535
+  },
+  "feature_by_unit": {
+   "seconds": 0.6909811496734619,
+   "tokens": 163200,
+   "fwd_equiv": 0.005680926277958162
+  },
+  "pass": {
+   "seconds": 10.714755773544312,
+   "tokens": 8160,
+   "fwd_equiv": 1.7618349694372162
+  }
+ },
+ "stages": {},
+ "cheaper": [],
+ "notes": {
+  "checks": {
+   "write_rebuild_max_rel": 7.244880634971196e-06,
+   "edit_to_current_max_abs": 0.0,
+   "logits_vs_biohub_max_abs": 0.0,
+   "feature_vs_biohub_max_abs": 0.0,
+   "feature_support_mismatch": 0.0,
+   "feature_max": 32.74057388305664,
+   "sae_idf_max_are_ones": true
+  },
+  "tokens": 8160
+ },
+ "gpu_type": "NVIDIA A100-SXM4-80GB",
+ "gpu_count": 8,
+ "seconds": 111.46745038032532,
+ "peak_host_gb": 33.3984375,
+ "peak_gpu_gb": 71.12242984771729
+}

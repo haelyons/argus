@@ -1,0 +1,7 @@
+.env
+.venv/
+out/
+data/raw/
+data/features.parquet
+vendor/
+__pycache__/

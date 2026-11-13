@@ -1,0 +1,25 @@
+YAML to run: sky.yaml
+Running on cluster: argus
+Considered resources (1 node):
+--------------------------------------------------------------------------------------------------
+ INFRA                INSTANCE                vCPUs   Mem(GB)   GPUS          COST ($)   CHOSEN   
+--------------------------------------------------------------------------------------------------
+ Lambda (us-east-1)   gpu_8x_a100_80gb_sxm4   240     1800      A100-80GB:8   22.32      [32m   ✔[0m     
+--------------------------------------------------------------------------------------------------
+[0m⚙︎ Launching on Lambda us-east-1[0m.
+[2mW 11-13 11:42:30.054 PID=2676256 instance.py:125] run_instances error: instance-operations/launch/insufficient-capacity: Not enough capacity to fulfill launch request. Regions with capacity available: us-midwest-1[0m
+sky.exceptions.ResourcesUnavailableError: Failed to acquire resources in all zones in us-east-1 for {Lambda({'A100-80GB': 8})}. 
+
+[0m[33m↺[0m Trying other potential resources.
+Considered resources (1 node):
+-----------------------------------------------------------------------------------------------------
+ INFRA                   INSTANCE                vCPUs   Mem(GB)   GPUS          COST ($)   CHOSEN   
+-----------------------------------------------------------------------------------------------------
+ Lambda (us-midwest-1)   gpu_8x_a100_80gb_sxm4   240     1800      A100-80GB:8   22.32      [32m   ✔[0m     
+-----------------------------------------------------------------------------------------------------
+[0m⚙︎ Launching on Lambda us-midwest-1[0m.
+[2m└── [0m[2mInstance is up.[0m
+[0m[32m✓ Cluster launched: argus.[0m[0m  [2mView logs: [1msky logs --provision argus[0m[0m
+[0m⚙︎ Syncing files.
+  [33mThe size of workdir '/home/hal/dev/interp/argus' is 1113 MB. Try to keep workdir small or use .skyignore to exclude large files, as large sizes will slow down rsync.[0m
+  [2mSyncing workdir (to 1 node): /home/hal/dev/interp/argus -> ~/sky_workdir[0m

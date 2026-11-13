@@ -1,0 +1,5 @@
+.env
+out/
+data/raw/
+vendor/esm/.git/
+__pycache__/

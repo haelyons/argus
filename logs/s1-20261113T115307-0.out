@@ -1,0 +1,66 @@
+/home/ubuntu/sky_workdir/vendor/esm/esm/models/esmc/kernels.py:54: UserWarning: ESMC: flash-attn is not installed or failed to import; attention and RoPE fall back to pure PyTorch. PyPI cannot carry our wheel, so install it by hand:
+
+    pip install "flash_attn @ https://github.com/evolutionaryscale/wheels/releases/download/py312-pt211-cu13-sm80-90/flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl"
+
+It needs Linux x86-64, Python 3.12, torch 2.11, CUDA 13, compute capability 8.0-9.0 and libstdc++ from GCC 13+ (Ubuntu 24.04, or LD_PRELOAD a newer libstdc++ on 22.04).
+  warnings.warn(
+Fetching 11 files:   0%|          | 0/11 [00:00<?, ?it/s]Fetching 11 files: 100%|██████████| 11/11 [00:00<00:00, 997.65it/s]
+Fetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Fetching 4 files: 100%|██████████| 4/4 [00:00<00:00, 1037.68it/s]
+{
+ "stage": "s1",
+ "shard": [
+  0,
+  1
+ ],
+ "argv": [
+  "/home/ubuntu/sky_workdir/argus/s1.py",
+  "--shard",
+  "0/1"
+ ],
+ "tok_s": 1346.52856602159,
+ "ops": {
+  "forward_to_60": {
+   "seconds": 4.557633876800537,
+   "tokens": 8192,
+   "fwd_equiv": 0.7491435801488827
+  },
+  "forward_tapped": {
+   "seconds": 6.083765029907227,
+   "tokens": 8192,
+   "fwd_equiv": 0.9999955324381438
+  },
+  "forward_with_patterns": {
+   "seconds": 6.936651945114136,
+   "tokens": 8192,
+   "fwd_equiv": 1.1401855464655042
+  },
+  "forward_backward_all_units": {
+   "seconds": 2.4478423595428467,
+   "tokens": 2048,
+   "fwd_equiv": 1.6094187803916673
+  }
+ },
+ "stages": {},
+ "cheaper": [],
+ "notes": {
+  "checks": {
+   "write_rebuild_max_rel": 7.948748134367634e-06,
+   "edit_to_current_max_abs": 0.0,
+   "logits_vs_biohub_max_abs": 0.0,
+   "feature_vs_biohub_max_abs": 0.0,
+   "feature_support_mismatch": 0.0,
+   "feature_max": 30.605085372924805,
+   "sae_idf_max_are_ones": true
+  },
+  "batch": [
+   8,
+   1024
+  ],
+  "grad_nonzero": 0.9833496809005737
+ },
+ "gpu_type": "NVIDIA A100-SXM4-80GB",
+ "gpu_count": 1,
+ "seconds": 70.2545862197876,
+ "peak_host_gb": 33.47467041015625,
+ "peak_gpu_gb": 46.72061538696289
+}
