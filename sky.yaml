@@ -3,11 +3,15 @@
 #   git log -1 --format=%cd-%h --date=format:%Y%m%d > COMMIT
 # sky launch -c argus sky.yaml --env STAGE=s_checks --env ARGS="--input swissprot-biohub"   leaves the machine up
 # sky exec argus sky.yaml --env STAGE=s_collect --env ARGS="--input swissprot-biohub"       next operation, same machine
-# add --down to tear the machine down after; --gpus A100:1 to use one GPU
+# add --down to tear the machine down after; --retry-until-up to wait for capacity
 name: argus
 resources:
   cloud: lambda
-  accelerators: A100-80GB:8
+  any_of:
+    - accelerators: H100:4
+    - accelerators: A100-80GB:8
+    - accelerators: H100:2
+    - accelerators: H100:8
 workdir: .
 envs:
   STAGE: s_checks
