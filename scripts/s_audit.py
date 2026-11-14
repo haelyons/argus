@@ -1,6 +1,7 @@
-"""Do the residues where a unit is most positive, or most negative, share one thing: an amino acid, a
-Swiss-Prot annotation, a Pfam family or an SAE feature? Does the thing its strongest train residues
-share also hold at its strongest holdout residues, and at its top 64 of a random holdout sample?
+"""Do the residues where a unit is most positive, or most negative, share one thing more than chance
+allows: an amino acid, a Swiss-Prot annotation, a Pfam family or an SAE feature? Does the thing its
+strongest train residues share also hold at its strongest holdout residues, and at its top 64 of a
+random holdout sample?
 """
 
 import glob
@@ -74,16 +75,12 @@ def labels(input, dev):
     return {k: v.to(dev) for k, v in lab.items()}, torch.from_numpy(off).to(dev), dict(annotation=ANN, pfam=names)
 
 
-def top_label(ids):
-    """ids (m, n), -1 = none. The most common label of each row and how many times it occurs."""
-    s = ids.sort(1).values
-    new = torch.ones_like(s, dtype=torch.bool)
-    new[:, 1:] = s[:, 1:] != s[:, :-1]
-    run = new.cumsum(1) - 1
-    cnt = torch.zeros_like(s).scatter_add_(1, run, (s >= 0).long())
-    c, r = cnt.max(1)
-    first = (run == r[:, None]).float().argmax(1)
-    return s.gather(1, first[:, None])[:, 0], c
+def top_label(ids, expect):
+    """ids (m, n), -1 = none. expect (labels,): the count chance gives. The label each row has most above chance, and its count."""
+    cnt = torch.zeros(len(ids), len(expect) + 1, device=ids.device).scatter_add_(1, ids + 1, torch.ones_like(ids, dtype=torch.float))[:, 1:]
+    lb = (cnt - expect).argmax(1)
+    c = cnt.gather(1, lb[:, None])[:, 0]
+    return torch.where(c > 0, lb, -1), c
 
 
 def share(ids, lab):
@@ -125,7 +122,7 @@ def reduce(log):
     for i in range(0, 2 * N * U, CHUNK):
         fl = {k: flat(v[i : i + CHUNK].to(dev)) for k, v in tok.items()}
         for f in FAMS:
-            lb, c = top_label(lab[f][fl["train"]].flatten(1).long())
+            lb, c = top_label(lab[f][fl["train"]].flatten(1).long(), K * base[f])
             cols[f"{f}_label"].append(lb.cpu())
             cols[f"{f}_train"].append((c / K).cpu())
             cols[f"{f}_holdout"].append(share(lab[f][fl["holdout"]], lb).cpu())
@@ -134,10 +131,11 @@ def reduce(log):
     out |= {k: torch.cat(v) for k, v in cols.items()}
     pd.DataFrame({k: v.numpy() for k, v in out.items()}).to_parquet(f"{log.dir}/audit.parquet")
     json.dump(names, open(f"{log.dir}/labels.json", "w"))
-    best = {b: torch.stack([out[f"{f}_{b}"] for f in FAMS]).max(0).values for b in ("holdout", "mid")}
+    over = {(f, b): (out[f"{f}_{b}"] - out[f"{f}_base"]) / (1 - out[f"{f}_base"]) for f in FAMS for b in ("holdout", "mid")}
+    best = {b: torch.stack([over[f, b] for f in FAMS]).max(0).values for b in ("holdout", "mid")}
     at = lambda x: {t: round((x >= t).float().mean().item(), 4) for t in (0.5, 0.75, 0.9)}
-    log.note(poles=2 * N * U, tokens=T, any=at(best["holdout"]), any_mid=at(best["mid"]),
-             **{f: dict(holdout=at(out[f"{f}_holdout"]), mid=at(out[f"{f}_mid"])) for f in FAMS})
+    log.note(poles=2 * N * U, tokens=T, above_chance="(share - base) / (1 - base)", any=at(best["holdout"]), any_mid=at(best["mid"]),
+             **{f: dict(holdout=at(over[f, "holdout"]), mid=at(over[f, "mid"])) for f in FAMS})
     log.write()
     print(open(log.path).read())
 
