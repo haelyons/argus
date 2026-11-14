@@ -8,22 +8,10 @@ import glob
 import torch
 
 from argus import data, net, runlog, sae
-from argus.collect import stats, tracking
+from argus.collect import stats, top_units
 
 G, BUDGET = 64, 4096
 SIZES = [1, 2, 4, 8, 16, 32, 64]
-
-
-def pick(st, N, U):
-    """Per feature, the G units with the largest |r| over all blocks, strongest first: unit (F, G), r (F, G)."""
-    r = unit = None
-    for l in range(N):
-        t = tracking(st, l)
-        ids = (l * U + torch.arange(U, device="cuda")).expand_as(t)
-        t, ids = (t if r is None else torch.cat([r, t], 1)), (ids if r is None else torch.cat([unit, ids], 1))
-        i = t.abs().topk(G, 1).indices
-        r, unit = t.gather(1, i), ids.gather(1, i)
-    return unit, r
 
 
 def moments(m, s, df, unit, r, sd, log):
@@ -93,9 +81,8 @@ def main():
         return reduce(log)
     m, s, df = net.load(), sae.load(), data.sample(log.input)
     st = stats(log.read("collect"), "train")
-    N, U = st[3].shape
     with log.stage("pick"), torch.no_grad():
-        unit, r = pick(st, N, U)
+        unit, r = top_units(st, len(st[3]), G)
     torch.save(dict(unit=unit.cpu(), r=r.cpu()), f"{log.dir}/units-shard{log.shard[0]}.pt")
     for split in ("train", "holdout"):
         with log.stage(split):

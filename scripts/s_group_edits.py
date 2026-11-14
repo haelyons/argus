@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 
 from argus import data, edit, net, pick, runlog, sae
+from argus.collect import stats, tracking
 
 BUDGET, SINGLES, TOPN = 12288, 16, 1024
 SIZES = [2**i for i in range(11)]
@@ -23,14 +24,12 @@ def row_ids(rankings, row, n_group):
     return rankings[r][:n] if n_group else rankings[r][n : n + 1]
 
 
-def feature_scores(j, grad, stats, dirs):
+def feature_scores(j, grad, st, norm, dirs):
     L = sae.LAYER
     share = np.stack([np.load(f"{dirs['direct_shares']}/train/unit_{l:02d}.npy", mmap_mode="r")[j] for l in range(L)])
-    cond = np.stack([np.load(f"{dirs['collect']}/train/cond_{l:02d}.npy", mmap_mode="r")[j] for l in range(L)])
     enc = np.stack([np.load(f"{dirs['weights']}/enc_{l:02d}.npy", mmap_mode="r")[:, j] for l in range(L)])
-    mean, std, norm = (x[:L] for x in stats)
     t = lambda x: torch.from_numpy(x.astype(np.float32)).cuda()
-    return dict(grad=grad.cuda(), share=t(share), comove=(t(cond) - mean) / std, weight=t(enc) / norm)
+    return dict(grad=grad.cuda(), share=t(share), comove=torch.stack([tracking(st, l, j) for l in range(L)]), weight=t(enc) / norm[:L])
 
 
 def unit_scores(m, l, u, grad, samp, share):
@@ -102,18 +101,19 @@ class Target:
 def run_example(tg, ids, e, rankings, rows, log, U):
     m, nu, pos, L = tg.m, tg.nu, e["on"][1], ids.shape[1]
     got = {}
-    states, acts = edit.clean(m, ids, tg.stop, nu)
+    cap = edit.capture(m, ids, tg.stop, nu)
+    states, acts = cap["x"], torch.stack(cap["a"])
     net.run(m, ids, x=states[tg.stop - 1], start=tg.stop - 1, stop=tg.stop, tap=tg.tap(got, pos))
     base = tg.measure(states[tg.stop], got, pos)[0]
     d = tg.direct(states[tg.stop], got, pos)
     off_ids = pick.ids_of(tg.df, e["off"][0])
-    src, valid = edit.align(edit.clean(m, off_ids, nu, nu)[1], L, e["off"][1] - pos)
+    src, valid = edit.align(torch.stack(edit.capture(m, off_ids, nu, nu)["a"]), L, e["off"][1] - pos)
 
     mids, labels = data.mask(ids.cpu(), [e["on"][0]])
     labels[0, pos], mids[0, pos] = int(ids[0, pos]), net.MASK
     mids, labels = mids.cuda(), labels.cuda()
     N = len(net.blocks(m))
-    mstates, _ = edit.clean(m, mids, N, 0)
+    mstates = edit.capture(m, mids, N, 0)["x"]
     lp = lambda x: net.logits(m, x).float().log_softmax(-1)[:, pos, ids[0, pos]]
     cl = dict(zip(tg.cols, base.tolist()), mloss=net.mlm_loss(m, mstates[N], labels).item(), mlogp=lp(mstates[N]).item(),
               masked=int((labels >= 0).sum()))
@@ -155,10 +155,7 @@ def main():
     df = data.sample(log.input)
     dirs = {op: log.read(op) for op in ("collect", "direct_shares", "gradients")} | {"weights": log.read("weights", "none")}
     U = net.blocks(m)[0].ffn.ffn_hidden_size
-    st = torch.load(dirs["collect"] + "/train/units.pt")
-    mean = (st["stat"][:, 0] / st["n"]).float().cuda()
-    std = ((st["stat"][:, 1] / st["n"]).float().cuda() - mean**2).clamp(min=1e-12).sqrt()
-    stats = (mean, std, torch.from_numpy(np.load(dirs["weights"] + "/norm.npy")).cuda())
+    st, norm = stats(dirs["collect"], "train"), torch.from_numpy(np.load(dirs["weights"] + "/norm.npy")).cuda()
     todo = pick.targets(log.input, log.shard)
     samp = torch.load(dirs["collect"] + "/train/sample.pt")["acts"] if any(k == "units" for _, k, _, _ in todo) else None
     used = full = 0
@@ -170,12 +167,13 @@ def main():
         grad = torch.load(f"{dirs['gradients']}/{name}.pt")["rank"]
         with log.stage("rankings"), torch.no_grad():
             if kind == "features":
-                scores = feature_scores(t, grad, stats, dirs)
+                scores = feature_scores(t, grad, st, norm, dirs)
             else:
                 share = []
                 for e in ex["train"]:
                     ids, got = pick.ids_of(df, e["on"][0]), {}
-                    states, acts = edit.clean(m, ids, tg.stop, tg.nu)
+                    c = edit.capture(m, ids, tg.stop, tg.nu)
+                    states, acts = c["x"], torch.stack(c["a"])
                     net.run(m, ids, x=states[tg.stop - 1], start=tg.stop - 1, stop=tg.stop, tap=tg.tap(got, e["on"][1]))
                     share.append(acts[:, e["on"][1]] * tg.direct(None, got, e["on"][1])[0])
                 scores = unit_scores(m, t[0], t[1], grad, samp, torch.stack(share).mean(0))

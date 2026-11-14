@@ -15,19 +15,6 @@ OPS = ["remove", "raise", "copy"]
 MULT = [0.0, 2.0, 1.0]
 
 
-def clean(m, ids, stop, nu):
-    """States entering blocks 0..stop, and the activations of blocks < nu as (nu, L, U)."""
-    states, acts = [m.esmc.embed(ids)], []
-
-    def tap(l, r):
-        states.append(r["x"])
-        if l < nu:
-            acts.append(r["a"][0])
-
-    net.run(m, ids, x=states[0], stop=stop, tap=tap)
-    return states, torch.stack(acts) if acts else None
-
-
 def align(acts_off, L, shift):
     """Contrast activations laid on the target's positions: src (nu, L, U), valid (L,)."""
     pos = torch.arange(L, device=acts_off.device) + shift
@@ -68,14 +55,17 @@ def new_value(op, a, c):
     return [torch.zeros_like(a), 2 * a, c][op]
 
 
-def capture(m, ids):
-    """Every block of one protein: activations a[l] (L, U), head outputs z[l] (L, H, dh), states x[l]."""
+def capture(m, ids, stop=None, nu=None):
+    """One protein's clean pass: states x[l] entering blocks 0..stop, and for blocks < nu (all by default)
+    activations a[l] (L, U) and head outputs z[l] (L, H, dh)."""
     c = dict(a=[], z=[], x=[m.esmc.embed(ids)])
 
     def tap(l, r):
-        c["a"].append(r["a"][0]), c["z"].append(r["z"][0]), c["x"].append(r["x"])
+        c["x"].append(r["x"])
+        if nu is None or l < nu:
+            c["a"].append(r["a"][0]), c["z"].append(r["z"][0])
 
-    net.run(m, ids, x=c["x"][0], tap=tap)
+    net.run(m, ids, x=c["x"][0], stop=stop, tap=tap)
     return c
 
 

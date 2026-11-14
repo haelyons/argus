@@ -10,7 +10,7 @@ import torch
 
 from argus import data, net, runlog, sae
 from argus.checks import checks
-from argus.collect import extremes, merge
+from argus.collect import extremes
 
 K, S, BUDGET = 32, 8192, 8192
 STAT = ["a", "a2", "g", "g2", "v", "v2", "n_g+v+", "n_g+v-", "n_g-v+", "a_g+v+", "a_g+v-", "a_g-v+", "a_g-v-", "n_a>0"]
@@ -44,8 +44,8 @@ def collect(m, s, df, shard, out, log):
                 rows = [a, a * a, g, g * g, v, v * v, pp, pn, np_, a * pp, a * pn, a * np_, a * ~(gp | vp), a > 0]
                 stat[l] += torch.stack([x.sum(0, dtype=torch.float64) for x in rows])
             with log.op("unit_extremes", T * (l == 0)):
-                hi[l] = extremes(hi[l], a, tok, K)
-                lo[l] = extremes(lo[l], -a, tok, K)
+                hi[l] = extremes(K, hi[l], (a, tok))
+                lo[l] = extremes(K, lo[l], (-a, tok))
             acts.append(a[pick].half().cpu())
             if l < sae.LAYER:
                 held.append(a.half())
@@ -55,7 +55,7 @@ def collect(m, s, df, shard, out, log):
                     dense = torch.zeros(*ids.shape, F, device=dev).scatter(-1, ind, val * keep[..., None])
                     flat = dense[keep]
                     fstat[:] += torch.stack([(flat > 0).sum(0), (dense.amax(1) > 0).sum(0), flat.sum(0), (flat * flat).sum(0)])
-                    fhi = extremes(fhi, flat, tok, K)
+                    fhi = extremes(K, fhi, (flat, tok))
                     for k, x in zip(("tok", "fval", "fidx", "res"), (tok, val[keep], ind[keep], ids[keep])):
                         samp[k].append(x[pick].cpu())
                     fs = torch.sparse_coo_tensor(flat.nonzero().T.flip(0), torch.ones(int((flat > 0).sum()), device=dev), (F, T)).coalesce()
@@ -86,8 +86,8 @@ def collect(m, s, df, shard, out, log):
     torch.cuda.empty_cache()
 
 
-def merge_ext_lo(parts, k):
-    v, t = merge([(-p[0], p[1]) for p in parts], k)
+def lowest(parts, k):
+    v, t = extremes(k, *[(-p[0], p[1]) for p in parts])
     return -v, t
 
 
@@ -98,10 +98,10 @@ def reduce(log):
         out = f"{OUT}/{split}"
         us = [torch.load(f"{d}/units.pt") for d in dirs]
         torch.save(dict(n=sum(u["n"] for u in us), stat=sum(u["stat"] for u in us), rows=STAT,
-                        hi=merge([u["hi"] for u in us], K), lo=merge_ext_lo([u["lo"] for u in us], K)), f"{out}/units.pt")
+                        hi=extremes(K, *[u["hi"] for u in us]), lo=lowest([u["lo"] for u in us], K)), f"{out}/units.pt")
         fs = [torch.load(f"{d}/features.pt") for d in dirs]
         fstat = sum(f["stat"] for f in fs)
-        torch.save(dict(stat=fstat, hi=merge([f["hi"] for f in fs], K), rows=FSTAT), f"{out}/features.pt")
+        torch.save(dict(stat=fstat, hi=extremes(K, *[f["hi"] for f in fs]), rows=FSTAT), f"{out}/features.pt")
         ss = [torch.load(f"{d}/sample.pt") for d in dirs]
         torch.save({k: torch.cat([s[k] for s in ss]) for k in ss[0]}, f"{out}/sample.pt")
         count = fstat[0].clamp(min=1).numpy()[:, None]

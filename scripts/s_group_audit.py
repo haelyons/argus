@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 
 from argus import audit, data, net, runlog
-from argus.collect import extremes, merge
+from argus.collect import extremes
 
 BUDGET, TOP, MID = 8192, 32, 64
 
@@ -45,10 +45,10 @@ def scores(m, cl, df, samp, log):
         with log.op("pass_group_scores", T), torch.no_grad():
             net.run(m, ids, tap=tap)
         sc = sc[:, : 2 * K] / size
-        hi = extremes(hi, sc, tok, TOP)
+        hi = extremes(TOP, hi, (sc, tok))
         if samp is not None:
             pick = torch.isin(tok, samp)
-            mid = extremes(mid, sc[pick], tok[pick], MID)
+            mid = extremes(MID, mid, (sc[pick], tok[pick]))
     return dict(hi=tuple(x.cpu() for x in hi), mid=mid and tuple(x.cpu() for x in mid))
 
 
@@ -59,8 +59,8 @@ def reduce(log):
     lab, off, names = audit.labels(log.input, dev)
     audit.features(lab, off, sorted(glob.glob(f"{log.read('audit')}/shard*/codes.pt")))
     parts = {s: [torch.load(f) for f in sorted(glob.glob(f"{log.dir}/{s}-shard*.pt"))] for s in ("train", "holdout")}
-    hi = {s: merge([p["hi"] for p in parts[s]], TOP) for s in parts}
-    mid = merge([p["mid"] for p in parts["holdout"]], MID)
+    hi = {s: extremes(TOP, *[p["hi"] for p in parts[s]]) for s in parts}
+    mid = extremes(MID, *[p["mid"] for p in parts["holdout"]])
     tok = dict(train=hi["train"][1].T, holdout=hi["holdout"][1].T, mid=mid[1].T)
     K = len(cl["size"])
     out = dict(group=torch.arange(K).repeat(2), control=torch.arange(2).repeat_interleave(K), size=cl["size"].repeat(2),

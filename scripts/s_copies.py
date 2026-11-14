@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from argus import net, runlog, sae
-from argus.collect import stats, tracking
+from argus.collect import stats, top_units, tracking
 
 K = 8
 
@@ -20,18 +20,16 @@ def main():
     N, U = len(net.blocks(m)), net.blocks(m)[0].ffn.ffn_hidden_size
     Wd = F.normalize(s.W_dec, dim=-1)
     train, holdout = stats(collect, "train"), stats(collect, "holdout")
-    r = unit = None
     cos_max, cos_unit, unit_r, unit_feature = [], [], [], []
-    for l in range(N):
-        with log.stage("tracking"):
-            t = tracking(train, l)
-            v, i = t.abs().max(0)
-            unit_r.append(t.gather(0, i[None])[0].half().cpu()), unit_feature.append(i.short().cpu())
-            ids = (l * U + torch.arange(U, device="cuda")).expand_as(t)
-            t, ids = (t if r is None else torch.cat([r, t], 1)), (ids if r is None else torch.cat([unit, ids], 1))
-            i = t.abs().topk(K, 1).indices
-            r, unit = t.gather(1, i), ids.gather(1, i)
-        with log.stage("directions"):
+
+    def best_feature(l, t):
+        i = t.abs().max(0).indices
+        unit_r.append(t.gather(0, i[None])[0].half().cpu()), unit_feature.append(i.short().cpu())
+
+    with log.stage("tracking"):
+        unit, r = top_units(train, N, K, best_feature)
+    with log.stage("directions"):
+        for l in range(N):
             v, i = (F.normalize(net.out_weight(m, l), dim=-1) @ Wd.T).abs().max(0)
             cos_max.append(v), cos_unit.append(l * U + i)
     cos_max, j = torch.stack(cos_max).max(0)
