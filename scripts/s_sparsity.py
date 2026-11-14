@@ -1,5 +1,5 @@
-"""How many unit activations can be set to zero, smallest first or by the signs of gate and value,
-before ESM C 6B predicts masked residues worse?
+"""How many unit activations can be set to zero, smallest first, largest first, at random or by the
+signs of gate and value, before ESM C 6B predicts masked residues worse?
 """
 
 import glob
@@ -11,14 +11,16 @@ from argus import data, net, runlog
 
 FRACS = [0.5, 0.75, 0.9, 0.95, 0.98, 0.99, 0.995, 0.998, 0.999]
 SIGNS = {"g+v+": (1, 1), "g+v-": (1, 0), "g-v+": (0, 1), "g-v-": (0, 0), "g-": (0, None), "v-": (None, 0)}
-CONDS = ["none"] + [f"weakest_{f}" for f in FRACS] + list(SIGNS)
+TOP = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25]
+CONDS = ["none"] + [f"weakest_{f}" for f in FRACS] + list(SIGNS) + [f"{k}_{f}" for k in ("strongest", "random") for f in TOP]
 PROTEINS, SEED, BUDGET, THR_TOKENS = 1024, 0, 8192, 512
 
 
 def thresholds(norm, collect):
     acts = torch.load(f"{collect}/train/sample.pt")["acts"][:THR_TOKENS].cuda().float()
     size = (acts.abs() * norm).flatten().sort().values
-    return [size[int(f * len(size))].item() for f in FRACS]
+    at = lambda f: size[int(f * len(size))].item()
+    return {f"weakest_{f}": at(f) for f in FRACS} | {f"strongest_{f}": at(1 - f) for f in TOP}
 
 
 def removal(cond, thr, wn, tally):
@@ -32,6 +34,10 @@ def removal(cond, thr, wn, tally):
                 drop &= (g > 0) == bool(gs)
             if vs is not None:
                 drop &= (v > 0) == bool(vs)
+        elif cond.startswith("random"):
+            drop = torch.rand_like(a) < float(cond.split("_")[1])
+        elif cond.startswith("strongest"):
+            drop = a.abs() * wn >= thr
         else:
             drop = a.abs() * wn < thr
         size = a.abs() * wn
@@ -46,6 +52,7 @@ def main():
     if log.reduce:
         return reduce(log)
     shard, OUT = log.shard, log.dir
+    torch.manual_seed(SEED)
     m = net.load()
     N = len(net.blocks(m))
     norm = torch.from_numpy(np.load(log.read("weights", "none") + "/norm.npy")).cuda()
@@ -62,7 +69,7 @@ def main():
             loss = []
             for c, cond in enumerate(CONDS):
                 edits = {} if cond == "none" else {
-                    ("act", l): removal(cond, thr[c - 1] if c <= len(FRACS) else None, norm[l], tally[c, l]) for l in range(N)}
+                    ("act", l): removal(cond, thr.get(cond), norm[l], tally[c, l]) for l in range(N)}
                 with log.op("masked_pass_edited" if edits else "masked_pass", ids.numel()), torch.no_grad():
                     loss.append(net.mlm_loss(m, net.run(m, ids, edits=edits), labels))
             rows.append((torch.from_numpy(idx), torch.stack(loss, 1).cpu(), (labels >= 0).sum(1).cpu()))
