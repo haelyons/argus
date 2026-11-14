@@ -10,6 +10,9 @@ GPUS=1 ./run.sh s_weights
 ./run.sh s_audit $i && python -m scripts.s_audit $i --reduce
 GPUS=1 ./run.sh s_copies $i
 ./run.sh s_copy_edits $i && python -m scripts.s_copy_edits $i --reduce
+./run.sh s_cofire $i && python -m scripts.s_cofire $i --reduce
+./run.sh s_group_audit $i && python -m scripts.s_group_audit $i --reduce
+./run.sh s_group_copies $i && python -m scripts.s_group_copies $i --reduce
 python -m argus.pick $1
 ./run.sh s_direct_shares $i && python -m scripts.s_direct_shares $i --reduce
 python -m scripts.s_compare_peaks $i

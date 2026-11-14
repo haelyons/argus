@@ -29,7 +29,7 @@ RUN = open("COMMIT").read().strip() if os.path.exists("COMMIT") else "uncommitte
 
 
 def latest(input, op):
-    return sorted(glob.glob(f"out/{input}/{op}/*"))[-1]
+    return max(glob.glob(f"out/{input}/{op}/*"), key=os.path.getmtime)
 
 
 def start(op, doc, input=None):

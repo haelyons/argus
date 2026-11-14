@@ -10,7 +10,7 @@ import torch
 
 from argus import data, net, runlog, sae
 from argus.checks import checks
-from argus.collect import extremes
+from argus.collect import extremes, merge
 
 K, S, BUDGET = 32, 8192, 8192
 STAT = ["a", "a2", "g", "g2", "v", "v2", "n_g+v+", "n_g+v-", "n_g-v+", "a_g+v+", "a_g+v-", "a_g-v+", "a_g-v-", "n_a>0"]
@@ -86,14 +86,8 @@ def collect(m, s, df, shard, out, log):
     torch.cuda.empty_cache()
 
 
-def merge_ext(parts, k):
-    v, t = torch.cat([p[0] for p in parts], -2), torch.cat([p[1] for p in parts], -2)
-    v, j = v.topk(k, -2)
-    return v, t.gather(-2, j)
-
-
 def merge_ext_lo(parts, k):
-    v, t = merge_ext([(-p[0], p[1]) for p in parts], k)
+    v, t = merge([(-p[0], p[1]) for p in parts], k)
     return -v, t
 
 
@@ -104,10 +98,10 @@ def reduce(log):
         out = f"{OUT}/{split}"
         us = [torch.load(f"{d}/units.pt") for d in dirs]
         torch.save(dict(n=sum(u["n"] for u in us), stat=sum(u["stat"] for u in us), rows=STAT,
-                        hi=merge_ext([u["hi"] for u in us], K), lo=merge_ext_lo([u["lo"] for u in us], K)), f"{out}/units.pt")
+                        hi=merge([u["hi"] for u in us], K), lo=merge_ext_lo([u["lo"] for u in us], K)), f"{out}/units.pt")
         fs = [torch.load(f"{d}/features.pt") for d in dirs]
         fstat = sum(f["stat"] for f in fs)
-        torch.save(dict(stat=fstat, hi=merge_ext([f["hi"] for f in fs], K), rows=FSTAT), f"{out}/features.pt")
+        torch.save(dict(stat=fstat, hi=merge([f["hi"] for f in fs], K), rows=FSTAT), f"{out}/features.pt")
         ss = [torch.load(f"{d}/sample.pt") for d in dirs]
         torch.save({k: torch.cat([s[k] for s in ss]) for k in ss[0]}, f"{out}/sample.pt")
         count = fstat[0].clamp(min=1).numpy()[:, None]

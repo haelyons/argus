@@ -3,28 +3,13 @@ it fires, do they still track it on holdout proteins, and how closely does any u
 match the feature's decoder direction? For each unit, which feature does it track best?
 """
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 
 from argus import net, runlog, sae
+from argus.collect import stats, tracking
 
 K = 8
-
-
-def stats(collect, split):
-    """Per unit mean and standard deviation (N, U), and per feature the share of tokens where it fires (F,)."""
-    u, f = torch.load(f"{collect}/{split}/units.pt"), torch.load(f"{collect}/{split}/features.pt")
-    mean = (u["stat"][:, 0] / u["n"]).float().cuda()
-    sd = ((u["stat"][:, 1] / u["n"]).float().cuda() - mean**2).clamp(min=1e-12).sqrt()
-    return collect, split, mean, sd, (f["stat"][0] / u["n"]).float().cuda()
-
-
-def tracking(st, l):
-    """r (F, U): correlation over tokens between block l's unit activations and each feature firing."""
-    collect, split, mean, sd, p = st
-    cond = torch.from_numpy(np.load(f"{collect}/{split}/cond_{l:02d}.npy").astype(np.float32)).cuda()
-    return (cond - mean[l]) / sd[l] * ((p / (1 - p)).sqrt() * (p > 0))[:, None]
 
 
 @torch.no_grad()
