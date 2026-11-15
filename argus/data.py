@@ -76,6 +76,19 @@ def batches(df, budget=16384, shard=(0, 1)):
         yield np.array([r[0] for r in rows]), torch.from_numpy(ids)
 
 
+def mutants(ids, budget=8192):
+    """Every single substitution of one protein, ids (1, T): yields (pos (B,), ids (B, T)) of at most `budget`
+    tokens. Rows run over residues, then over the 20 amino acids in token order, the protein's own included."""
+    T = ids.shape[1]
+    pos = torch.arange(1, T - 1, device=ids.device).repeat_interleave(20)
+    aa = torch.arange(4, 24, device=ids.device).repeat(T - 2)
+    for i in range(0, len(pos), budget // T):
+        p = pos[i : i + budget // T]
+        out = ids.repeat(len(p), 1)
+        out[torch.arange(len(p)), p] = aa[i : i + budget // T]
+        yield p, out
+
+
 def mask(ids, idx, rate=0.15):
     """Masked copy and labels (-100 off-mask). Seeded by protein index, so it is the same in every run."""
     ids, labels = ids.clone(), torch.full_like(ids, -100)
