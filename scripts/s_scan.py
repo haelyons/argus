@@ -68,7 +68,7 @@ def main():
         dg, dv, logits, own = (torch.cat(t) for t in zip(*rows))
         shape = lambda t: t.view(T - 2, 20, *t.shape[1:]).half()
         torch.save(dict({k: t.cpu() for k, t in pairs.items()}, protein=p, ids=ids[0].cpu(), g=g0[0].cpu(), v=v0[0].cpu(), logits_clean=l0[0].cpu(),
-                        dg=shape(dg), dv=shape(dv), logits=shape(logits), state=state.sqrt().half().cpu()), f"{log.dir}/p{p}.pt")
+                        dg=shape(dg), dv=shape(dv), logits=shape(logits), state=state.sqrt().cpu()), f"{log.dir}/p{p}.pt")
         log.note(**{f"p{p}": dict(residues=T - 2, poles_at_fraction=n, pairs=len(pairs["unit"]),
                                   own_residue_max_abs={k: t[own].abs().max().item() for k, t in dict(dg=dg, dv=dv, logits=logits).items()})})
     log.write()
