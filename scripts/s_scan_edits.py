@@ -1,8 +1,9 @@
 """Does a substitution reach the predicted residues through chosen units? In one protein, every
 residue is replaced by each of the 20 amino acids. How do the chosen units' gate and value change at
-every residue, and how do the amino-acid logits change at every residue? How much of the logit change
-goes when the units are held at their values on the unchanged protein, and how much appears when the
-unchanged protein is given only the units' values from the changed one?
+every residue (kept for sets of at most KEEP units), and how do the amino-acid logits change at
+every residue? How much of the logit change goes when the units are held at their values on the
+unchanged protein, and how much appears when the unchanged protein is given only the units' values
+from the changed one?
 """
 
 import json
@@ -11,7 +12,7 @@ import torch
 
 from argus import data, net, pick, runlog
 
-BUDGET = 8192
+BUDGET, KEEP = 8192, 64
 AA = slice(4, 24)
 
 
@@ -49,13 +50,13 @@ def scan(m, ids, units, log):
         with log.op("given", n):
             lg, _ = after(ids.expand(B, -1), xw.expand(B, -1, -1), put(c))
         own = (mids == ids).all(1)
-        d = [torch.cat([c[l][k] - w[l][k] for l in sorted(by)], -1) for k in range(2)]
+        d = [torch.cat([c[l][k] - w[l][k] for l in sorted(by)], -1)[..., : KEEP * (len(units) <= KEEP)] for k in range(2)]
         rows.append([x.cpu() for x in (lm - lw, lm - lh, lg - lw, d[0], d[1], own)])
     logits, held, given, dg, dv, own = (torch.cat(x) for x in zip(*rows))
     shape = lambda x: x.view(T - 2, 20, *x.shape[1:])
     out = dict(units=units, ids=ids[0].cpu(), logits=shape(logits), held=shape(held), given=shape(given), dg=shape(dg), dv=shape(dv),
                g=torch.cat([w[l][0] for l in sorted(by)], -1)[0].cpu(), v=torch.cat([w[l][1] for l in sorted(by)], -1)[0].cpu(), logits_clean=lw[0].cpu())
-    return out, {k: x[own].abs().max().item() for k, x in dict(logits=logits, held=held, given=given, dg=dg, dv=dv).items()}
+    return out, {k: x[own].abs().max().item() for k, x in dict(logits=logits, held=held, given=given, dg=dg, dv=dv).items() if x.numel()}
 
 
 def main():
