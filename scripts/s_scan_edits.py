@@ -20,20 +20,20 @@ def scan(m, ids, units, log):
     by, units = {}, sorted(units)
     for l, u in units:
         by.setdefault(l, []).append(u)
-    first, T = min(by), ids.shape[1]
+    first, T, small = min(by), ids.shape[1], len(units) <= KEEP
 
     def after(batch, x, edits=None):
-        """Logits and the units' g, v, a (B, T, units of the block) per block, from the state entering `first`."""
+        """Logits and the units' g, v, a (B, T, units of the block) per block, a alone for a large set, from the state entering `first`."""
         gva = {}
 
         def tap(l, r):
             if l in by:
-                gva[l] = [r[k][..., by[l]] for k in "gva"]
+                gva[l] = [r[k][..., by[l]] for k in ("gva" if small else "a")]
 
         return net.logits(m, net.run(m, batch, x=x, start=first, edits=edits, tap=tap))[..., AA], gva
 
     def put(gva):
-        return {("act", l): net.put((slice(None), slice(None), by[l]), gva[l][2]) for l in by}
+        return {("act", l): net.put((slice(None), slice(None), by[l]), gva[l][-1]) for l in by}
 
     xw = net.run(m, ids, stop=first)
     lw, w = after(ids, xw)
@@ -50,23 +50,25 @@ def scan(m, ids, units, log):
         with log.op("given", n):
             lg, _ = after(ids.expand(B, -1), xw.expand(B, -1, -1), put(c))
         own = (mids == ids).all(1)
-        d = [torch.cat([c[l][k] - w[l][k] for l in sorted(by)], -1)[..., : KEEP * (len(units) <= KEEP)] for k in range(2)]
-        rows.append([x.cpu() for x in (lm - lw, lm - lh, lg - lw, d[0], d[1], own)])
-    logits, held, given, dg, dv, own = (torch.cat(x) for x in zip(*rows))
+        d = [torch.cat([c[l][k] - w[l][k] for l in sorted(by)], -1) for k in range(2 * small)]
+        rows.append([x.cpu() for x in (lm - lw, lm - lh, lg - lw, own, *d)])
+    logits, held, given, own, *d = (torch.cat(x) for x in zip(*rows))
     shape = lambda x: x.view(T - 2, 20, *x.shape[1:])
-    out = dict(units=units, ids=ids[0].cpu(), logits=shape(logits), held=shape(held), given=shape(given), dg=shape(dg), dv=shape(dv),
-               g=torch.cat([w[l][0] for l in sorted(by)], -1)[0].cpu(), v=torch.cat([w[l][1] for l in sorted(by)], -1)[0].cpu(), logits_clean=lw[0].cpu())
-    return out, {k: x[own].abs().max().item() for k, x in dict(logits=logits, held=held, given=given, dg=dg, dv=dv).items() if x.numel()}
+    out = dict(ids=ids[0].cpu(), logits=shape(logits), held=shape(held), given=shape(given), logits_clean=lw[0].cpu())
+    if small:
+        out |= dict(units=units, dg=shape(d[0]), dv=shape(d[1]), g=torch.cat([w[l][0] for l in sorted(by)], -1)[0].cpu(), v=torch.cat([w[l][1] for l in sorted(by)], -1)[0].cpu())
+    return out, {k: x[own].abs().max().item() for k, x in dict(zip(("logits", "held", "given", "dg", "dv"), (logits, held, given, *d))).items()}
 
 
 def main():
     log = runlog.start("scan_edits", __doc__)
     m, df = net.load(), data.sample(log.input)
-    targets = json.load(open(data.path(log.input, "scan.json")))
+    targets, U = json.load(open(data.path(log.input, "scan.json"))), net.blocks(m)[0].ffn.ffn_hidden_size
     for name, t in list(targets.items())[log.shard[0] :: log.shard[1]]:
+        units = [tuple(u) for u in t["units"]] if "units" in t else [(l, u) for l in t["blocks"] for u in range(U)]
         with torch.no_grad():
-            out, own = scan(m, pick.ids_of(df, t["protein"]), [tuple(u) for u in t["units"]], log)
-        torch.save(dict(out, protein=t["protein"]), f"{log.dir}/{name}.pt")
+            out, own = scan(m, pick.ids_of(df, t["protein"]), units, log)
+        torch.save(dict(t, **out), f"{log.dir}/{name}.pt")
         log.note(**{name: dict(own_residue_max_abs=own, logits=out["logits"].norm().item(), held=out["held"].norm().item(), given=out["given"].norm().item())})
     log.write()
     print(open(log.path).read())
