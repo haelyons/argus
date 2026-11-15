@@ -1,22 +1,22 @@
 """Which residues of a protein decide a unit's activity where the unit is strong, and do the same
 residues decide what ESM C 6B predicts? In one protein at a time, every residue is replaced by each of
-the 20 amino acids. For each unit pole that reaches FRACTION of its largest activation over train
-proteins, how do its gate and value change at the residue where it is strongest in this protein? How
-far does the residual state after every block move at every residue, and how do the amino-acid logits
-change at every residue?
+the 20 amino acids. For the PAIRS poles of each block that come nearest their largest activation over
+train proteins, and reach FRACTION of it, how do gate and value change at the residue where the pole
+is strongest in this protein? How far does the residual state after every block move at every
+residue, and how do the amino-acid logits change at every residue?
 """
 
 import torch
 
 from argus import data, net, pick, runlog
 
-PROTEINS, MAX_LEN, SEED, BUDGET, FRACTION, PAIRS = 100, 200, 0, 8192, 0.5, 4096
+PROTEINS, MAX_LEN, SEED, BUDGET, FRACTION, PAIRS = 100, 200, 0, 8192, 0.5, 50
 AA = slice(4, 24)
 
 
 def strong(m, ids, peak):
-    """The clean pass: states after every block (N, T, D), and the PAIRS strongest (block, pole, unit) by share
-    of peak, each at its strongest residue, in block order. Also how many poles reach FRACTION."""
+    """The clean pass: states after every block (N, T, D), and each block's PAIRS strongest (pole, unit) by share
+    of peak that reach FRACTION, each at its strongest residue, in block order. Also how many poles reach FRACTION."""
     x, best = [], []
 
     def tap(l, r):
@@ -25,8 +25,9 @@ def strong(m, ids, peak):
 
     net.run(m, ids, tap=tap)
     share, pos = (torch.stack([b[k] for b in best]) for k in range(2))
-    U, n = share.shape[-1], int((share >= FRACTION).sum())
-    i = share.flatten().topk(min(PAIRS, n)).indices.sort().values
+    U, top = share.shape[-1], share.flatten(1).topk(PAIRS, 1)
+    i = (torch.arange(len(x), device=top.indices.device)[:, None] * 2 * U + top.indices)[top.values >= FRACTION]
+    n = int((share >= FRACTION).sum())
     return torch.stack(x), dict(block=i // (2 * U), pole=1 - 2 * (i // U % 2), unit=i % U, pos=pos.flatten()[i], share=share.flatten()[i]), n
 
 
