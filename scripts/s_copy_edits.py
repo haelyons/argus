@@ -1,6 +1,9 @@
 """Do later blocks need the SAE features that no unit copies? When features are taken out of the
 residual state entering block 60, in quarters ordered by how well their best unit tracks them, how
 much worse does ESM C 6B predict masked residues, and how much of the state did each quarter hold?
+Is the most tracked quarter's damage carried by its best tracked part, by its features that fire on
+most residues, or by removing it while the others stay? Does a random quarter do the same? How
+many of the most tracked features must go before the damage appears?
 """
 
 import glob
@@ -9,15 +12,23 @@ import torch
 
 from argus import data, net, runlog, sae
 
-PROTEINS, SEED, BUDGET, Q = 1024, 0, 8192, 4
-CONDS = ["none", "all"] + [f"quarter_{q}" for q in range(Q)]
+PROTEINS, SEED, BUDGET, Q, DENSE = 1024, 0, 8192, 4, 0.5
+TOP = [2**i for i in range(10)]
+CONDS = (["none", "all"] + [f"quarter_{q}" for q in range(Q)] + [f"sixteenth_{q}" for q in range(Q * Q - Q, Q * Q)]
+         + ["dense", "quarter_3_sparse", "all_but_quarter_3", "random_quarter"] + [f"top_{n}" for n in TOP])
 
 
-def groups(copies):
-    """(conditions, F) 1 where the feature is removed. quarter_0 holds the least tracked features."""
-    r = torch.load(f"{copies}/copies.pt")["r"][:, 0].abs()
-    q = r.argsort().argsort() * Q // len(r)
-    return torch.stack([torch.zeros_like(r), torch.ones_like(r)] + [(q == i).float() for i in range(Q)]).cuda()
+def groups(copies, tokens):
+    """(conditions, F) 1 where the feature is removed. quarter_0 holds the least tracked features, the
+    sixteenths split quarter_3, top_n holds the n most tracked, and dense features fire on more than DENSE of the `tokens` train tokens."""
+    c = torch.load(f"{copies}/copies.pt")
+    rank = c["r"][:, 0].abs().argsort().argsort()
+    q, s, F = rank * Q // len(rank), rank * Q * Q // len(rank), len(rank)
+    dense = c["tokens"] / tokens > DENSE
+    rnd = torch.randperm(F, generator=torch.Generator().manual_seed(SEED)) < F // Q
+    sel = ([torch.zeros(F, dtype=torch.bool), torch.ones(F, dtype=torch.bool)] + [q == i for i in range(Q)]
+           + [s == i for i in range(Q * Q - Q, Q * Q)] + [dense, (q == Q - 1) & ~dense, q != Q - 1, rnd] + [rank >= F - n for n in TOP])
+    return torch.stack(sel).float().cuda()
 
 
 def main():
@@ -26,8 +37,9 @@ def main():
         return reduce(log)
     m, s = net.load(), sae.load()
     L = sae.LAYER
-    sel = groups(log.read("copies"))
     df = data.sample(log.input)
+    train = df[df.split == "train"]
+    sel = groups(log.read("copies"), int(train.Length.sum()) + 2 * len(train))
     for split in ("train", "holdout"):
         part = df[df.split == split].sample(PROTEINS, random_state=SEED)
         rows, size, tokens = [], torch.zeros(len(CONDS), device="cuda"), 0
