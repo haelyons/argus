@@ -4,6 +4,7 @@ split) with targets.json and examples.json beside it. Serves length-sorted batch
 python -m argus.data <name>     builds inputs/<name>/sample.parquet
 """
 
+import json
 import os
 import sys
 
@@ -14,6 +15,7 @@ import torch
 PAD, MASK, CLS, EOS = 1, 32, 0, 2
 RAW = "data/raw/swissprot.tsv.gz"
 FEATURES = "data/features.parquet"
+CHAINS = "data/raw/full_seq_dict.json"  # github.com/NainaniJatinZ/plm_circuits, data/full_seq_dict.json
 SEED, HOLDOUT = 0, 0.1
 STRIDE = 2048
 VOCAB = "LAGVSERTIDPKQNFYMHWCXBUZO"
@@ -37,7 +39,14 @@ def swissprot_biohub(df):
     return df[df.Entry.isin(ids) & df.Length.between(30, 2046)].sort_values("Entry")
 
 
-BUILD = {"swissprot-random": swissprot_random, "swissprot-biohub": swissprot_biohub}
+def jump(df):
+    """The two PDB chains of Nainani et al. 2025 (bioRxiv 10.1101/2025.08.22.671739), from the sequences of
+    Zhang et al. 2024: 2B61 chain A (MetXA, P45131) and 1PVG chain A (TOP2, P06786), expression tags included."""
+    seqs = json.load(open(CHAINS))
+    return pd.DataFrame([dict(Entry=k, Length=len(seqs[k]), Sequence=seqs[k]) for k in ("2B61A", "1PVGA")])
+
+
+BUILD = {"swissprot-random": swissprot_random, "swissprot-biohub": swissprot_biohub, "jump": jump}
 
 
 def build(name):
@@ -76,12 +85,14 @@ def batches(df, budget=16384, shard=(0, 1)):
         yield np.array([r[0] for r in rows]), torch.from_numpy(ids)
 
 
-def mutants(ids, budget=8192):
-    """Every single substitution of one protein, ids (1, T): yields (pos (B,), ids (B, T)) of at most `budget`
-    tokens. Rows run over residues, then over the 20 amino acids in token order, the protein's own included."""
+def mutants(ids, budget=8192, at=None):
+    """Every single substitution of one protein, ids (1, T), or of its token positions `at`: yields (pos (B,),
+    ids (B, T)) of at most `budget` tokens. Rows run over residues, then over the 20 amino acids in token
+    order, the protein's own included."""
     T = ids.shape[1]
-    pos = torch.arange(1, T - 1, device=ids.device).repeat_interleave(20)
-    aa = torch.arange(4, 24, device=ids.device).repeat(T - 2)
+    at = torch.arange(1, T - 1, device=ids.device) if at is None else at
+    pos = at.repeat_interleave(20)
+    aa = torch.arange(4, 24, device=ids.device).repeat(len(at))
     for i in range(0, len(pos), budget // T):
         p = pos[i : i + budget // T]
         out = ids.repeat(len(p), 1)
