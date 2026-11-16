@@ -9,10 +9,6 @@ logits couple most, and that each block's state couples most, how many are in co
 """
 
 import glob
-import gzip
-import json
-import os
-import urllib.request
 
 import pandas as pd
 import torch
@@ -22,26 +18,6 @@ from argus import data, runlog
 
 FAR, HALF, CONTACT, SEP = 12, 0.5, 8.0, 24
 CLASSES = ["AVLIM", "FWY", "STNQ", "KRH", "DE", "C", "G", "P"]
-AFDB, RAW = "https://alphafold.ebi.ac.uk/api/prediction/", "data/raw/afdb"
-
-
-def contacts(entry, n):
-    """(n, n) residue contacts of the AlphaFold model, or None when it has no model of n residues."""
-    path = f"{RAW}/{entry}.pdb"
-    get = lambda url: urllib.request.urlopen(url, timeout=60).read()
-    if not os.path.exists(path):
-        os.makedirs(RAW, exist_ok=True)
-        try:
-            pdb = get(json.loads(get(AFDB + entry))[0]["pdbUrl"])
-        except Exception:
-            return None
-        open(path, "wb").write(gzip.decompress(pdb) if pdb[:2] == b"\x1f\x8b" else pdb)
-    atoms = [(int(r[22:26]), r[12:16].strip(), [float(r[30:38]), float(r[38:46]), float(r[46:54])]) for r in open(path) if r.startswith("ATOM")]
-    xyz = {i: x for i, a, x in atoms if a == "CA"} | {i: x for i, a, x in atoms if a == "CB"}
-    if sorted(xyz) != list(range(1, n + 1)):
-        return None
-    x = torch.tensor([xyz[i] for i in range(1, n + 1)])
-    return torch.cdist(x, x) < CONTACT
 
 
 def precision(m, c):
@@ -61,10 +37,10 @@ def main():
     for f in sorted(glob.glob(f"{scan}/p*.pt")):
         d = torch.load(f)
         p, t, L = d["protein"], d["pos"], d["dg"].shape[0]
-        c = contacts(df.Entry[p], L)
-        if c is None:
+        x = data.model(df.Entry[p], L)
+        if x is None:
             continue
-        cont[p] = c
+        cont[p] = c = torch.cdist(x[0], x[0]) < CONTACT
         a0 = F.silu(d["g"]) * d["v"]
         rel = (F.silu(d["g"] + d["dg"].float()) * (d["v"] + d["dv"].float()) - a0).abs() / a0.abs()  # (L, 20, P)
         res = d["ids"][1:-1] - 4
