@@ -20,23 +20,12 @@ AA = slice(4, 24)
 KINDS = ["flank", "random", "none"]
 
 
-def masked(ids, keep):
-    """ids (1, T) with every residue masked but token positions `keep`."""
-    m = torch.zeros_like(ids, dtype=torch.bool)
-    m[:, keep] = m[:, [0, -1]] = True
-    return torch.where(m, ids, data.MASK)
-
-
 def inputs(ids, a, b, protein):
     """[(kind, k, ids)]: the stretches a, b and the k residues before a and after b unmasked; the stretches and
     as many of the other residues, in one random order per protein; nothing masked (k = -1)."""
-    T, at = ids.shape[1], torch.cat([a, b])
-    rest = torch.tensor([i for i in range(1, T - 1) if i not in at.tolist()], device=ids.device)
-    rest = rest[torch.randperm(len(rest), generator=torch.Generator().manual_seed(protein)).to(ids.device)]
     out = []
     for k in range(FLANKS + 1):
-        flank = torch.cat([torch.arange(max(1, int(a[0]) - k), int(a[0])), torch.arange(int(b[-1]) + 1, min(T - 1, int(b[-1]) + 1 + k))]).to(ids.device)
-        out += [(0, k, masked(ids, torch.cat([at, flank]))), (1, k, masked(ids, torch.cat([at, rest[: len(flank)]])))]
+        out += [(0, k, data.masked(ids, data.unmasked(ids, a, b, k))), (1, k, data.masked(ids, data.unmasked(ids, a, b, k, protein)))]
     return out + [(2, -1, ids)]
 
 
@@ -59,15 +48,6 @@ def scan(m, ids, at, log):
     return l0.cpu(), lg.view(len(at), 20, len(at), 20).half(), state.sqrt().cpu(), lg[own].abs().max().item()
 
 
-def pattern(c):
-    """c (K, E, E), how much a replacement at one residue moves another: the correlation of each row's
-    coupling between the two stretches with the last row's."""
-    h = c.shape[-1] // 2
-    x = (c[:, :h, h:] + c[:, h:, :h].transpose(1, 2)).flatten(1)
-    x = x - x.mean(1, keepdim=True)
-    return ((x * x[-1]).sum(1) / (x.norm(dim=1) * x[-1].norm())).tolist()
-
-
 def reduce(log, targets):
     n = FLANKS + 1
     for name, t in targets.items():
@@ -75,7 +55,7 @@ def reduce(log, targets):
         key = torch.cat([p["kind"] * (n + 1) + p["k"] for p in ps]).argsort()
         d = {f: torch.cat([p[f] for p in ps])[key] for f in ("kind", "k", "logits_clean", "logits", "state", "own")}
         torch.save(dict(t, ids=ps[0]["ids"], at=ps[0]["at"], kinds=KINDS, **d), f"{log.dir}/{name}.pt")
-        lg, st = pattern(d["logits"].float().square().sum((2, 4)).sqrt()), pattern(d["state"][:, -1])
+        lg, st = (data.pattern(c, c[-1]) for c in (d["logits"].float().square().sum((2, 4)).sqrt(), d["state"][:, -1]))
         log.note(**{name: dict(own_residue_max_abs=d["own"].max().item(), flank_logits=lg[:n], random_logits=lg[n : 2 * n],
                                flank_last_state=st[:n], random_last_state=st[n : 2 * n])})
     log.write()

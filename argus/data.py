@@ -191,5 +191,32 @@ def mask(ids, idx, rate=0.15):
     return ids, labels
 
 
+def masked(ids, keep):
+    """ids (1, T) with every residue masked but token positions `keep`."""
+    m = torch.zeros_like(ids, dtype=torch.bool)
+    m[:, keep] = m[:, [0, -1]] = True
+    return torch.where(m, ids, MASK)
+
+
+def unmasked(ids, a, b, k, seed=None):
+    """Token positions of two stretches a, b of ids (1, T) and of the k residues before a and after b; with
+    a seed, of as many of the other residues instead, the first of one random order."""
+    T, at = ids.shape[1], torch.cat([a, b])
+    flank = torch.cat([torch.arange(max(1, int(a[0]) - k), int(a[0])), torch.arange(int(b[-1]) + 1, min(T - 1, int(b[-1]) + 1 + k))]).to(ids.device)
+    if seed is None:
+        return torch.cat([at, flank])
+    rest = torch.tensor([i for i in range(1, T - 1) if i not in at.tolist()], device=ids.device)
+    return torch.cat([at, rest[torch.randperm(len(rest), generator=torch.Generator().manual_seed(seed)).to(ids.device)][: len(flank)]])
+
+
+def pattern(c, ref):
+    """c (K, E, E), how much a replacement at one residue of two stretches of E / 2 moves another: the
+    correlation of each row's coupling between the two stretches with that of ref (E, E)."""
+    h = c.shape[-1] // 2
+    x, y = ((t[..., :h, h:] + t[..., h:, :h].transpose(-1, -2)).flatten(-2) for t in (c, ref))
+    x, y = x - x.mean(-1, keepdim=True), y - y.mean()
+    return ((x * y).sum(-1) / (x.norm(dim=-1) * y.norm())).tolist()
+
+
 if __name__ == "__main__":
     build(sys.argv[1])
