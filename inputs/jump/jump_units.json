@@ -1,0 +1,6 @@
+{"1PVGA_flank": {"protein": 1, "centres": [101, 202], "random": false, "off": 7, "on": 8, "blocks": [16, 32], "set": "rest"},
+ "2B61A_flank": {"protein": 0, "centres": [182, 316], "random": false, "off": 12, "on": 14, "blocks": [16, 32], "set": "seen"},
+ "1PVGA_random": {"protein": 1, "centres": [101, 202], "random": true, "off": 32, "on": 33, "blocks": [32, 48], "set": "seen"},
+ "2B61A_random": {"protein": 0, "centres": [182, 316], "random": true, "off": 44, "on": 45, "blocks": [16, 32], "set": "rest"},
+ "1PVGA_flank_far": {"protein": 1, "centres": [101, 202], "random": false, "off": 7, "on": 8, "blocks": [32, 48], "set": "far"},
+ "2B61A_flank_far": {"protein": 0, "centres": [182, 316], "random": false, "off": 12, "on": 14, "blocks": [32, 48], "set": "far"}}
