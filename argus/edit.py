@@ -92,3 +92,13 @@ def remove_hold(removed, hold_u, hold_h, c, U, H):
 
         ed["head", l] = f
     return ed
+
+
+def moved(m, ids, at, same, edits=None):
+    """ids (B, T), each row one replacement of one token, row `same` the one that leaves it as it is. The change
+    of the amino-acid logits at tokens `at` (B, E, 20), the distance every block's state moves there summed over
+    the rows (N, E), and row `same`'s amino-acid logits at every token (T, 20)."""
+    st = []
+    lg = net.logits(m, net.run(m, ids, edits=edits, tap=lambda l, r: st.append(r["x"][:, at])))[..., 4:24]
+    st = torch.stack(st)
+    return (lg[:, at] - lg[same, at]).half().cpu(), (st - st[:, same : same + 1]).square().sum((1, 3)).sqrt().cpu(), lg[same].half().cpu()

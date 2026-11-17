@@ -218,5 +218,22 @@ def pattern(c, ref):
     return ((x * y).sum(-1) / (x.norm(dim=-1) * y.norm())).tolist()
 
 
+SETS = ["site", "own", "far", "new", "seen", "rest"]
+
+
+def sets(off, p, a, b, new):
+    """Token masks (len(SETS) + len(new), T) of a masking off (1, T) of two stretches a, b, for the replaced token p:
+    p (site), the rest of its stretch (own), the other stretch (far), the tokens `new`, the other unmasked residues
+    (seen), every other token (rest); then each of `new` alone."""
+    m = torch.zeros(len(SETS) + len(new), off.shape[1], dtype=torch.bool, device=off.device)
+    own, far = (a, b) if p in a else (b, a)
+    m[0, p] = m[1, own] = m[2, far] = m[3, new] = True
+    m[1, p] = False
+    m[4] = off[0] != MASK
+    m[4, [0, -1]] = m[4, a] = m[4, b] = False
+    m[5] = ~m[:5].any(0)
+    m[len(SETS) + torch.arange(len(new), device=off.device), new] = True
+    return m
+
 if __name__ == "__main__":
     build(sys.argv[1])

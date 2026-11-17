@@ -17,35 +17,20 @@ import json
 
 import torch
 
-from argus import data, net, pick, runlog
+from argus import data, edit, net, pick, runlog
 
 HALF = 5
 STATES = [3, 15, 31, 47, 55, 63, 71, 75]
 RANGES = [(0, 16), (16, 32), (32, 48), (48, 64), (64, 80)]
-SETS = ["site", "own", "far", "new", "seen", "rest"]
 EDIT = ["none", "state", "units"]
-AA = slice(4, 24)
 
 
 def rows(n):
     """(edit, which, where) for n new residues: no edit under masking `which` (off, on, off with new residue
     which - 2); the state after block STATES[where] or the units of blocks RANGES[where], at the set `which`
     (SETS, then each new residue)."""
-    return ([(0, j, 0) for j in range(2 + n)] + [(1, s, i) for s in range(len(SETS) + n) for i in range(len(STATES))]
-            + [(2, s, i) for i in range(len(RANGES)) for s in range(len(SETS))])
-
-
-def sets(off, p, a, b, new):
-    """Token masks (len(SETS) + len(new), T) for the replaced token p: SETS, then each new residue."""
-    m = torch.zeros(len(SETS) + len(new), off.shape[1], dtype=torch.bool, device=off.device)
-    own, far = (a, b) if p in a else (b, a)
-    m[0, p] = m[1, own] = m[2, far] = m[3, new] = True
-    m[1, p] = False
-    m[4] = off[0] != data.MASK
-    m[4, [0, -1]] = m[4, a] = m[4, b] = False
-    m[5] = ~m[:5].any(0)
-    m[len(SETS) + torch.arange(len(new), device=off.device), new] = True
-    return m
+    return ([(0, j, 0) for j in range(2 + n)] + [(1, s, i) for s in range(len(data.SETS) + n) for i in range(len(STATES))]
+            + [(2, s, i) for i in range(len(RANGES)) for s in range(len(data.SETS))])
 
 
 def scan(m, x, at, a, b, new, rows, log):
@@ -56,7 +41,7 @@ def scan(m, x, at, a, b, new, rows, log):
     out = []
     for k, p in enumerate(at.tolist()):
         mut = [next(data.mutants(i, 20 * i.shape[1], at[k : k + 1]))[1] for i in x]
-        same, M, got = int(x[0][0, p]) - 4, sets(x[0], p, a, b, new), {}
+        same, M, got = int(x[0][0, p]) - 4, data.sets(x[0], p, a, b, new), {}
         if log.rec["tok_s"] is None:
             log.plain(m, mut[0])
 
@@ -78,11 +63,8 @@ def scan(m, x, at, a, b, new, rows, log):
                 ed = {("state", STATES[i]): net.put((slice(None), M[s]), donor(1, 0)[STATES[i]][:, M[s]])}
             if e == 2:
                 ed = {("act", l): net.put((slice(None), M[s]), v[:, M[s]]) for l, v in donor(2, i).items()}
-            st = []
             with log.op(EDIT[e], ids.numel()):
-                lg = net.logits(m, net.run(m, ids, edits=ed, tap=lambda l, r: st.append(r["x"][:, at])))[..., AA]
-            st = torch.stack(st)
-            out.append(((lg[:, at] - lg[same, at]).half().cpu(), (st - st[:, same : same + 1]).square().sum((1, 3)).sqrt().cpu(), lg[same].half().cpu()))
+                out.append(edit.moved(m, ids, at, same, ed))
     logits, state, clean = (torch.stack(t).view(len(at), len(rows), *t[0].shape).transpose(0, 1) for t in zip(*out))
     return logits, state.transpose(1, 2), clean
 
@@ -93,7 +75,7 @@ def reduce(log, targets):
         rows = torch.cat([p["rows"] for p in ps]).tolist()
         key = sorted(range(len(rows)), key=rows.__getitem__)
         d = {f: torch.cat([p[f] for p in ps])[key] for f in ("rows", "logits", "state", "clean")}
-        torch.save(dict(t, ids=ps[0]["ids"], at=ps[0]["at"], inputs=ps[0]["inputs"], new=ps[0]["new"], states=STATES, ranges=RANGES, sets=SETS, **d), f"{log.dir}/{name}.pt")
+        torch.save(dict(t, ids=ps[0]["ids"], at=ps[0]["at"], inputs=ps[0]["inputs"], new=ps[0]["new"], states=STATES, ranges=RANGES, sets=data.SETS, **d), f"{log.dir}/{name}.pt")
         c, h, cl = d["logits"].float().square().sum((2, 4)).sqrt(), len(ps[0]["at"]) // 2, d["clean"].float().flatten(1)
         size, step = torch.cat([c[:, :h, h:], c[:, h:, :h]], 1).flatten(1).norm(dim=1), (cl[1] - cl[0]).norm()
         log.note(**{name: dict(rows=d["rows"].tolist(), pattern_logits=data.pattern(c, c[1]), pattern_last_state=data.pattern(d["state"][:, -1], d["state"][1, -1]),
