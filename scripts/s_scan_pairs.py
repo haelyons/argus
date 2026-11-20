@@ -15,18 +15,10 @@ import torch
 import torch.nn.functional as F
 
 from argus import data, runlog
+from argus.pairs import contacts, precision
 
-FAR, HALF, CONTACT, SEP = 12, 0.5, 8.0, 24
+FAR, HALF = 12, 0.5
 CLASSES = ["AVLIM", "FWY", "STNQ", "KRH", "DE", "C", "G", "P"]
-
-
-def precision(m, c):
-    """Share in contact of the L pairs, SEP or more apart, with the largest score: m (L, L) made symmetric,
-    less each pair's row mean times column mean over the mean."""
-    m = (m + m.T) / 2
-    m = m - m.mean(0, keepdim=True) * m.mean(1, keepdim=True) / m.mean()
-    i, j = torch.triu_indices(len(m), len(m), SEP)
-    return c[i, j][m[i, j].topk(min(len(m), len(i))).indices].float().mean().item(), c[i, j].float().mean().item()
 
 
 def main():
@@ -37,10 +29,10 @@ def main():
     for f in sorted(glob.glob(f"{scan}/p*.pt")):
         d = torch.load(f)
         p, t, L = d["protein"], d["pos"], d["dg"].shape[0]
-        x = data.model(df.Entry[p], L)
-        if x is None:
+        c = contacts(df.Entry[p], L)
+        if c is None:
             continue
-        cont[p] = c = torch.cdist(x[0], x[0]) < CONTACT
+        cont[p] = c
         a0 = F.silu(d["g"]) * d["v"]
         rel = (F.silu(d["g"] + d["dg"].float()) * (d["v"] + d["dv"].float()) - a0).abs() / a0.abs()  # (L, 20, P)
         res = d["ids"][1:-1] - 4
@@ -62,7 +54,7 @@ def main():
         score = [d["logits"].float().flatten(3).norm(dim=3).norm(dim=1)] + list(d["state"].float())
         for b, m in enumerate(score):
             hits, chance = precision(m[:, 1:-1], c)
-            maps.append(dict(protein=p, residues=L, block=b - 1, precision=hits, chance=chance))
+            maps.append(dict(protein=p, residues=L, block=b - 1, precision=hits.item(), chance=chance))
     pairs, maps = pd.concat(pairs), pd.DataFrame(maps)
     pairs.to_parquet(f"{log.dir}/pairs.parquet")
     maps.to_parquet(f"{log.dir}/maps.parquet")
