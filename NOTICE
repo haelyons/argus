@@ -1,0 +1,10 @@
+Material from others in this repository and in its data, huggingface.co/datasets/hal2k/argus-data, and its terms.
+
+UniProtKB/Swiss-Prot, UniProt Consortium. CC BY 4.0. https://www.uniprot.org/help/license
+  The protein sequences and annotations of every input.
+ESM C 6B, its layer-60 sparse autoencoder and feature table, Chan Zuckerberg Biohub. MIT. https://github.com/Biohub/esm
+  Every activation, logit and feature value is computed with them.
+AlphaFold Protein Structure Database, Google DeepMind and EMBL-EBI. CC BY 4.0. https://alphafold.ebi.ac.uk
+  Residue contacts and pLDDT in the data.
+Protein Data Bank. CC0 1.0. https://www.rcsb.org
+  The sequences of chains 2B61 A and 1PVG A in the data.
