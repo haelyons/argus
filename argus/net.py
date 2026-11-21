@@ -61,20 +61,31 @@ def put(idx, val):
     return f
 
 
-def _block(b, l, x, mask, edits, tap, pattern):
-    at, s = b.attn, b.scaling_factor
+def qkv(at, x):
+    """Per-head queries, keys and values of attention layer `at` from the state entering its block. (B, H, L, dh) each."""
     B, L, _ = x.shape
     q, k, v = at.layernorm_qkv(x).chunk(3, -1)
     q, k = at._apply_rotary(at.q_ln(q), at.k_ln(k))
-    q, k, v = (t.view(B, L, at.n_heads, at.d_head).transpose(1, 2) for t in (q, k, v))
+    return [t.view(B, L, at.n_heads, at.d_head).transpose(1, 2) for t in (q, k, v)]
+
+
+def attention(at, q, k, mask=None):
+    """Attention pattern (B, H, L, L) of queries q over keys k."""
+    sc = (q @ k.transpose(-2, -1)) * at.d_head**-0.5
+    if mask is not None:
+        sc = sc.masked_fill(~mask, float("-inf"))
+    return sc.softmax(-1)
+
+
+def _block(b, l, x, mask, edits, tap, pattern):
+    at, s = b.attn, b.scaling_factor
+    B, L, _ = x.shape
+    q, k, v = qkv(at, x)
     if ("value", l) in edits:
         v = edits["value", l](v)
     p = None
     if pattern or ("pattern", l) in edits:
-        sc = (q @ k.transpose(-2, -1)) * at.d_head**-0.5
-        if mask is not None:
-            sc = sc.masked_fill(~mask, float("-inf"))
-        p = sc.softmax(-1)
+        p = attention(at, q, k, mask)
         if ("pattern", l) in edits:
             p = edits["pattern", l](p)
         z = p @ v

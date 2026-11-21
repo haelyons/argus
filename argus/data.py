@@ -21,6 +21,7 @@ FEATURES = "data/features.parquet"
 CHAINS = "data/raw/full_seq_dict.json"  # github.com/NainaniJatinZ/plm_circuits, data/full_seq_dict.json
 PFAM = "data/raw/pfam.tsv"  # ebi.ac.uk/interpro/api/entry/pfam?extra_fields=counters: accession, proteins, ...
 AFDB, MODELS = "https://alphafold.ebi.ac.uk/api/prediction/", "data/raw/afdb"
+PDBE, KNOWN = "https://www.ebi.ac.uk/pdbe/", "data/raw/pdbe"
 SEED, HOLDOUT = 0, 0.1
 STRIDE = 2048
 VOCAB = "LAGVSERTIDPKQNFYMHWCXBUZO"
@@ -51,22 +52,23 @@ def jump(df):
     return pd.DataFrame([dict(Entry=k, Length=len(seqs[k]), Sequence=seqs[k]) for k in ("2B61A", "1PVGA")])
 
 
+def get(url, tries=8):
+    """What a URL returns, or None when it has nothing there. Any other failure is retried, then raised."""
+    try:
+        return urllib.request.urlopen(url, timeout=60).read()
+    except OSError as e:
+        if getattr(e, "code", None) in (400, 404):
+            return None
+        if tries == 0:
+            raise
+    time.sleep(15)
+    return get(url, tries - 1)
+
+
 def model(entry, n):
     """The AlphaFold model of a UniProt entry, fetched once: C-beta coordinates, C-alpha for glycine, (n, 3) and
     pLDDT (n,). None when it has no model of n residues."""
     file = f"{MODELS}/{entry}.pdb"
-
-    def get(url, tries=8):
-        try:
-            return urllib.request.urlopen(url, timeout=60).read()
-        except OSError as e:
-            if getattr(e, "code", None) in (400, 404):
-                return None
-            if tries == 0:
-                raise
-        time.sleep(15)
-        return get(url, tries - 1)
-
     if not os.path.exists(file):
         os.makedirs(MODELS, exist_ok=True)
         found = get(AFDB + entry)
@@ -80,6 +82,59 @@ def model(entry, n):
     if sorted(xyz) != list(range(1, n + 1)):
         return None
     return torch.tensor([xyz[i] for i in range(1, n + 1)]), torch.tensor([ca[i][1] for i in range(1, n + 1)])
+
+
+def best(entry):
+    """The experimental structure that covers most of a UniProt entry, as PDBe maps it: pdb_id, chain_id,
+    experimental_method, resolution, coverage. None without one."""
+    found = get(PDBE + "api/mappings/best_structures/" + entry)
+    return max(json.loads(found)[entry], key=lambda s: s["coverage"]) if found else None
+
+
+def structure(entry, pdb, chain, n):
+    """One chain of an experimental structure on the residues of a UniProt entry of n residues, by the UniProt
+    numbers PDBe gives its atoms; fetched once. C-beta coordinates, C-alpha for glycine or where there is no
+    C-beta, (n, 3), and the residues it resolves (n,)."""
+    file = f"{KNOWN}/{pdb}.cif"
+    if not os.path.exists(file):
+        os.makedirs(KNOWN, exist_ok=True)
+        open(file, "wb").write(get(f"{PDBE}entry-files/download/{pdb}_updated.cif"))
+    cols, xyz, seen = [], torch.zeros(n, 3), torch.zeros(n, dtype=torch.bool)
+    for r in open(file):
+        if r.startswith("_atom_site."):
+            cols.append(r.strip()[11:])
+        elif cols and r[:4] in ("ATOM", "HETA"):
+            a = dict(zip(cols, r.split()))
+            i = int(a["pdbx_sifts_xref_db_num"]) - 1 if a["pdbx_sifts_xref_db_acc"] == entry else -1
+            if a["auth_asym_id"] == chain and a["pdbx_PDB_model_num"] == "1" and a["label_alt_id"] in ".A" and 0 <= i < n:
+                if a["label_atom_id"] == "CB" or (a["label_atom_id"] == "CA" and not seen[i]):
+                    xyz[i], seen[i] = torch.tensor([float(a[k]) for k in ("Cartn_x", "Cartn_y", "Cartn_z")]), True
+    return xyz, seen
+
+
+def swissprot_known(df):
+    """30 reviewed proteins of 80 to 200 standard residues with one Pfam family, of no family of swissprot-depth
+    and one per family, taken in random order. Each has an X-ray structure of at most 2.5 angstrom that PDBe maps
+    onto at least 95% of it, resolving at least 90% of its residues, in which at least 1% of the resolved residue
+    pairs 24 or more apart are within 8 angstrom. Carries family, pdb, chain, resolution and coverage."""
+    used = set(pd.read_parquet(path("swissprot-depth", "sample.parquet"), columns=["family"]).family)
+    df = df[df.Length.between(80, 200) & df.Pfam.str.count(";").eq(1) & df.Sequence.str.fullmatch("[ACDEFGHIKLMNPQRSTVWY]+") & (df.Helix.notna() | df["Beta strand"].notna())]
+    df = df.assign(family=df.Pfam.str.strip(";"))
+    df = df[~df.family.isin(used)].sample(frac=1, random_state=SEED).drop_duplicates("family")
+    keep = {}
+    for i, r in df.iterrows():
+        b = best(r.Entry)
+        if not b or b["experimental_method"] != "X-ray diffraction" or not b["resolution"] or b["resolution"] > 2.5 or b["coverage"] < 0.95:
+            continue
+        x, seen = structure(r.Entry, b["pdb_id"], b["chain_id"], r.Length)
+        far = torch.triu_indices(r.Length, r.Length, 24)
+        ok = seen[far[0]] & seen[far[1]]
+        if seen.float().mean() < 0.9 or (torch.cdist(x, x)[far[0], far[1]][ok] < 8).float().mean() < 0.01:
+            continue
+        keep[i] = dict(pdb=b["pdb_id"], chain=b["chain_id"], resolution=b["resolution"], coverage=b["coverage"])
+        if len(keep) == 30:
+            break
+    return df.loc[list(keep)].assign(**pd.DataFrame(keep).T.to_dict("list"))
 
 
 def swissprot_depth(df):
@@ -110,7 +165,7 @@ def swissprot_depth(df):
     return df.loc[keep]
 
 
-BUILD = {"swissprot-random": swissprot_random, "swissprot-biohub": swissprot_biohub, "jump": jump, "swissprot-depth": swissprot_depth}
+BUILD = {"swissprot-random": swissprot_random, "swissprot-biohub": swissprot_biohub, "jump": jump, "swissprot-depth": swissprot_depth, "swissprot-known": swissprot_known}
 
 
 def build(name):
