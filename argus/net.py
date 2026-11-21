@@ -4,9 +4,11 @@ run() walks blocks [start, stop). Per block it hands tap() a dict:
   g, v, a   gate, value, silu(g)*v            (B, L, U)
   z         per-head context before out_proj  (B, L, H, dh)
   p         attention pattern or None         (B, H, L, L)
+  hv        per-head values the pattern mixes (B, H, L, dh)
   attn, ffn the two writes into the state     (B, L, D)
   x         state after the block             (B, L, D)
-edits maps (kind, layer) -> fn. kind 'act': fn(a, g, v); 'head': fn(z); 'state': fn(x).
+edits maps (kind, layer) -> fn. kind 'act': fn(a, g, v); 'head': fn(z); 'state': fn(x); 'value': fn(hv);
+'pattern': fn(p), which makes the block compute its pattern.
 States are indexed by the block they enter: state[l] enters block l, state[N] feeds the head.
 Callers own the grad mode.
 """
@@ -65,12 +67,16 @@ def _block(b, l, x, mask, edits, tap, pattern):
     q, k, v = at.layernorm_qkv(x).chunk(3, -1)
     q, k = at._apply_rotary(at.q_ln(q), at.k_ln(k))
     q, k, v = (t.view(B, L, at.n_heads, at.d_head).transpose(1, 2) for t in (q, k, v))
+    if ("value", l) in edits:
+        v = edits["value", l](v)
     p = None
-    if pattern:
+    if pattern or ("pattern", l) in edits:
         sc = (q @ k.transpose(-2, -1)) * at.d_head**-0.5
         if mask is not None:
             sc = sc.masked_fill(~mask, float("-inf"))
         p = sc.softmax(-1)
+        if ("pattern", l) in edits:
+            p = edits["pattern", l](p)
         z = p @ v
     else:
         z = F.scaled_dot_product_attention(q, k, v, mask)
@@ -91,7 +97,7 @@ def _block(b, l, x, mask, edits, tap, pattern):
     if ("state", l) in edits:
         x = edits["state", l](x)
     if tap:
-        tap(l, dict(g=g, v=u, a=a, z=z, p=p, attn=attn, ffn=ffn, x=x))
+        tap(l, dict(g=g, v=u, a=a, z=z, p=p, hv=v, attn=attn, ffn=ffn, x=x))
     return x
 
 
