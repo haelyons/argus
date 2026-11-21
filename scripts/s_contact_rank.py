@@ -2,7 +2,8 @@
 the coupling between residues in contact? On the train proteins of an input but KEPT of them, set aside
 for s_contact_edits. Per head: of the L residue pairs, 24 or more apart, that its attention weighs most
 (the pattern among the residues, made symmetric, less row mean times column mean over the mean), how
-many are in contact in the protein's AlphaFold model? Per head and per unit: SUBS residues of each
+many are in contact in the protein's AlphaFold model, and what share of its attention among the residues
+falls 24 or more residues away? Per head and per unit: SUBS residues of each
 protein are replaced by another amino acid each. The gap is the change of the amino-acid logits at the
 residues in contact with the replaced one less that at residues equally far along the chain and not in
 contact. To first order, how much of the gap would go if the head's output or the unit's activation
@@ -29,10 +30,17 @@ def split(df):
 
 
 def readable(m, ids, c):
-    """(N, H) contact precision of every head's attention among the residues."""
-    out = []
-    net.run(m, ids, tap=lambda l, r: out.append(pairs.precision(r["p"][0, :, 1:-1, 1:-1], c)[0]), pattern=True)
-    return torch.stack(out)
+    """(2, N, H): of every head's attention among the residues, the contact precision and the share that falls
+    pairs.SEP or more residues away."""
+    out, r = [], torch.arange(len(c), device=c.device)
+    away = (r[:, None] - r).abs() >= pairs.SEP
+
+    def tap(l, t):
+        p = t["p"][0, :, 1:-1, 1:-1]
+        out.append(torch.stack([pairs.precision(p, c)[0], (p * away).sum((1, 2)) / p.sum((1, 2))]))
+
+    net.run(m, ids, tap=tap, pattern=True)
+    return torch.stack(out, 1)
 
 
 def carried(m, ids, c, gen, log):
@@ -91,10 +99,10 @@ def main():
 
 def reduce(log):
     ps = [torch.load(f) for f in sorted(glob.glob(f"{log.dir}/rank-shard*.pt"))]
-    read = torch.cat([p["readable"] for p in ps]).float()
-    score = dict(readable=read.mean(0), grad_heads=sum(p["heads"] for p in ps), grad_units=sum(p["units"] for p in ps))
+    read, far = torch.cat([p["readable"] for p in ps]).float().unbind(1)
+    score = dict(readable=read.mean(0), far=far.mean(0), grad_heads=sum(p["heads"] for p in ps), grad_units=sum(p["units"] for p in ps))
     rank = {k: v.flatten().argsort(descending=True) for k, v in score.items()}
-    proteins = sorted(sum((p["proteins"] for p in ps), []))
+    proteins = sum((p["proteins"] for p in ps), [])
     torch.save(dict(proteins=proteins, kept=ps[0]["kept"], per_protein=read.half(), score=score, rank=rank), f"{log.dir}/rank.pt")
     where = lambda k, n: [int(i) // score[k].shape[1] for i in rank[k][:n]]
     log.note(proteins=len(proteins), kept=ps[0]["kept"],

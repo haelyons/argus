@@ -1,5 +1,6 @@
 """Residue pairs: a protein's contacts in its AlphaFold model, and how well a score of pairs finds them."""
 
+import pandas as pd
 import torch
 
 from argus import data
@@ -40,3 +41,28 @@ def gap(m, c):
     """Mean score m (..., L, L) of the pairs in contact, and of the pairs not in contact at the same
     separations: (..., 2). Their difference is how far the score sets contacts apart."""
     return (m[..., None, :, :] * weights(c)).sum((-2, -1))
+
+
+def outcomes(files, df):
+    """One row per protein and set of the scans saved in `files` by an edit.coupling script: the precision and gap
+    of the coupling, and the share of the logit change at all residues and at those not replaced."""
+    rows = []
+    for f in files:
+        d = torch.load(f)
+        p, m = d["protein"], d["coupling"]
+        c = contacts(df.Entry[p], m.shape[-1])
+        (hits, chance), g, share = precision(m, c), gap(m, c), torch.cat([torch.zeros(1, 2), d["share"]])
+        for i, s in enumerate(d["sets"]):
+            rows.append(dict(protein=p, group="holdout" if df.split[p] == "holdout" else "set_aside", residues=m.shape[-1], set=s, precision=hits[i].item(), chance=chance,
+                             contact=g[i, 0].item(), matched=g[i, 1].item(), gap=(g[i, 0] - g[i, 1]).item(), share=share[i, 0].item(), share_not_replaced=share[i, 1].item()))
+    return pd.DataFrame(rows)
+
+
+def paired(t, group, a, b):
+    """Per outcome of a table of outcomes: the means of sets a and b over the group's proteins, the mean of a less
+    b, its standard error, and the number of proteins with a below b."""
+    out = {}
+    for y in ("precision", "gap"):
+        v = t[t.group == group].pivot(index="protein", columns="set", values=y)
+        out[y] = dict(a=v[a].mean(), b=v[b].mean(), diff=(v[a] - v[b]).mean(), se=(v[a] - v[b]).sem(), below=int((v[a] < v[b]).sum()), proteins=len(v))
+    return out
